@@ -59,6 +59,7 @@ class SessionProvider
         if (!is_writable($this->storageDir)) {
             throw new \RuntimeException(sprintf('Session storage dir "%s" is not writable'));
         }
+
         $this->credentials = $credentials;
     }
 
@@ -81,13 +82,21 @@ class SessionProvider
 
     private function createUrl(Session $session, string $path): string
     {
-        return sprintf('https://%s/%s', $session->getHost(), ltrim($path, '/'));
+        /* TODO: Infer the scheme somehow? */
+        return sprintf('http://%s/%s', $session->getHost(), ltrim($path, '/'));
     }
 
     private function authorizeSession(Session $session)
     {
         /** Clear old cookies just to be sure */
         $session->getCookies()->clear();
+
+        $response = $this->client->get($this->createUrl($session, self::LOGIN_FORM_PATH), [
+            'cookies' => $session->getCookies(),
+            'allow_redirects' => [
+                'referer' => true
+            ]
+        ]);
 
         $response = $this->client->get($this->createUrl($session, self::LOGIN_FORM_PATH), [
             'cookies' => $session->getCookies(),
@@ -161,7 +170,7 @@ class SessionProvider
      * @param bool $reauthorize If true new authorized session will be created
      * @return Session
      */
-    public function getSession(string $host, string $customerGroup = null, bool $reauthorize)
+    public function getSession(string $host, string $customerGroup = null, bool $reauthorize = false)
     {
         if (!$this->hasSession($host) || $reauthorize) {
             return $this->createSession($host, $customerGroup);

@@ -7,6 +7,7 @@ use Doctrine\DBAL\DriverManager;
 
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\FetchMode;
+use Doctrine\DBAL\ParameterType;
 use MageSuite\PageCacheWarmerCrawlWorker\Job;
 use MageSuite\PageCacheWarmerCrawlWorker\Queue;
 
@@ -48,7 +49,7 @@ class DatabaseQueue implements Queue
      */
     private function createDatabaseDate(string $offset = null): \DateTime
     {
-        $date = new \DateTime('now', new \DateTimeZone('UTF'));
+        $date = new \DateTime('now', new \DateTimeZone('UTC'));
 
         if (null !== $offset) {
             $date->modify($offset);
@@ -80,15 +81,13 @@ class DatabaseQueue implements Queue
     protected function getAcquireJobsStatement(int $count): Statement
     {
         $statement = $this->connection->prepare(
-            'SELECT * FROM :table WHERE ' .
+            'SELECT * FROM ' . self::JOB_TABLE . ' WHERE ' .
                 'processing_started_at IS NULL OR processing_started_at < :threshold ' .
-                'ORDER BY priority DESC LIMIT 0, :count'
+                'ORDER BY priority DESC LIMIT 0, ' . $count
         );
 
-        $statement->bindValue('table', self::JOB_TABLE);
-        $statement->bindValue('threshold', $this->createDatabaseDate(self::RETRY_THRESHOLD));
-        $statement->bindValue('count', $count);
-
+        $statement->bindValue('threshold', $this->createDatabaseDate(self::RETRY_THRESHOLD), 'datetime');
+        
         return $statement;
     }
 
@@ -100,12 +99,12 @@ class DatabaseQueue implements Queue
     protected function getStartJobsStatement(array $ids): Statement
     {
         $statement = $this->connection->prepare(
-            'UPDATE :table SET processing_started_at = :timestamp WHERE id IN (:ids)'
+            'UPDATE ' . self::JOB_TABLE . ' SET processing_started_at = :timestamp WHERE id IN (:ids)'
         );
 
-        $statement->bindValue('table', self::JOB_TABLE);
-        $statement->bindValue('timestamp', $this->createDatabaseDate());
-        $statement->bindValue('ids', $ids, Connection::PARAM_INT_ARRAY);
+        $statement->bindValue('timestamp', $this->createDatabaseDate(), 'datetime');
+        // They shall be scaped but freaking DBAL doesn't want to do it according to it's own docs
+        $statement->bindValue('ids', implode(',', $ids));
 
         return $statement;
     }
@@ -118,10 +117,9 @@ class DatabaseQueue implements Queue
     protected function getFinishJobsStatement(array $ids): Statement
     {
         $statement = $this->connection->prepare(
-            'DELETE FROM :table WHERE id IN (:ids)'
+            'DELETE FROM ' . self::JOB_TABLE . ' WHERE id IN (:ids)'
         );
 
-        $statement->bindValue('table', self::JOB_TABLE);
         $statement->bindValue('ids', $ids, Connection::PARAM_INT_ARRAY);
 
         return $statement;

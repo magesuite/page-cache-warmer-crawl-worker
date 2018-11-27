@@ -32,7 +32,10 @@ class ClientFactory
      */
     public function __construct(string $varnishUri = null, string $debugLog = null)
     {
-        $this->varnishUri = new Uri($varnishUri);
+        if (null !== $varnishUri) {
+            $this->varnishUri = new Uri($varnishUri);
+        }
+
         $this->debugLog = $debugLog;
     }
 
