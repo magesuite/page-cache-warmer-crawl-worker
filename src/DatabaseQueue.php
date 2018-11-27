@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker\Job\Adapter;
+namespace MageSuite\PageCacheWarmerCrawlWorker;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
