@@ -1,8 +1,10 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
+namespace MageSuite\PageCacheWarmerCrawlWorker;
 
-interface JobQueue
+use MageSuite\PageCacheWarmerCrawlWorker\Job;
+
+interface Queue
 {
     /**
      * Acquires new jobs for processing.

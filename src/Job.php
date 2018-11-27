@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
+namespace MageSuite\PageCacheWarmerCrawlWorker;
 
 class Job
 {
@@ -9,13 +9,19 @@ class Job
     const STATUS_COMPLETED = 'COMPLETED';
 
     // Connection timeout exceeded, server overloaded?
-    const FAILED_TIMEOUT = 'CONNECTION_TIMEOUT';
+    const FAILED_REASON_TIMEOUT = 'CONNECTION_TIMEOUT';
 
     // Site is not available - codes 502, 503, 504
-    const FAILED_UNAVAILABLE = 'SITE_NOT_AVAILABLE';
+    const FAILED_REASON_UNAVAILABLE = 'SITE_NOT_AVAILABLE';
 
     // Invalid status code - other than expected 200, 204
-    const FAILED_INVALID_CODE = 'INVALID_STATUS_CODE';
+    const FAILED_REASON_INVALID_CODE = 'INVALID_STATUS_CODE';
+
+    // Unspecified connection fail
+    const FAILED_REASON_CONNECTION = 'CONNECTION_FAILED';
+
+    // Old session was reused an the new one has been expired apparently
+    const FAILED_REASON_SESSION_EXPIRED = 'SESSION_EXPIRED';
 
     /**
      * @var int
@@ -43,7 +49,9 @@ class Job
     protected $entityType;
 
     /**
-     * @var string
+     * Null customer group indicates a not logged in user / public caching
+     *
+     * @var string|null
      */
     protected $customerGroup;
 
@@ -53,13 +61,30 @@ class Job
     protected $status = self::STATUS_PENDING;
 
     /**
+     * @var int
+     */
+    protected $statusCode;
+
+    /**
+     * @var string
+     */
+    protected $failReason;
+
+    /**
+     * Time it took to perform the request
+     *
+     * @var float
+     */
+    protected $transferTime;
+
+    /**
      * @param int $id
      * @param string $url
      * @param int $entityId
      * @param string $entityType
      * @param string $customerGroup
      */
-    public function __construct(int $id, string $url, int $entityId, string $entityType, string $customerGroup)
+    public function __construct(int $id, string $url, int $entityId, string $entityType, string $customerGroup = null)
     {
         $this->id = $id;
         $this->url = $url;
@@ -102,9 +127,9 @@ class Job
     }
 
     /**
-     * @return string
+     * @return string|null
      */
-    public function getCustomerGroup(): string
+    public function getCustomerGroup(): ?string
     {
         return $this->customerGroup;
     }
@@ -168,7 +193,73 @@ class Job
         return $this->status === self::STATUS_PENDING;
     }
 
+    public function markFailed(string $reason, int $statusCode = null)
+    {
+        if ($this->status !== self::STATUS_PENDING) {
+            throw new \DomainException('Only pending status can be changed to failed');
+        }
 
+        $this->failReason = $reason;
+        $this->status = self::STATUS_FAILED;
+        $this->statusCode = $statusCode;
+    }
 
+    public function markCompleted(int $statusCode = null)
+    {
+        if ($this->status !== self::STATUS_PENDING) {
+            throw new \DomainException('Only pending status can be changed to completed');
+        }
 
+        $this->status = self::STATUS_COMPLETED;
+        $this->statusCode = $statusCode;
+    }
+
+    /**
+     * @return int
+     */
+    public function getStatusCode(): int
+    {
+        return $this->statusCode;
+    }
+
+    /**
+     * @return string
+     */
+    public function getFailReason(): string
+    {
+        return $this->failReason;
+    }
+
+    /**
+     * @return float
+     */
+    public function getTransferTime(): float
+    {
+        return $this->transferTime;
+    }
+
+    /**
+     * @param float $transferTime
+     */
+    public function setTransferTime(float $transferTime): void
+    {
+        $this->transferTime = $transferTime;
+    }
+
+    public function toArray(): array
+    {
+        return [
+            'url' => $this->url,
+            'customer_group' => $this->customerGroup,
+            'status' => $this->status,
+            'status_code' => $this->statusCode,
+            'fail_reason' => $this->failReason,
+            'transfer_time' => $this->transferTime
+        ];
+    }
+
+    public function __toString()
+    {
+        return sprintf('Job(%s, %s : %s, %s)', $this->id, $this->url, $this->customerGroup, $this->status);
+    }
 }

@@ -4,8 +4,8 @@ namespace  MageSuite\PageCacheWarmerCrawlWorker\Tests\Integration\Job;
 
 use MageSuite\PageCacheWarmerCrawlWorker\Tests\Utils\TestCase;
 use MageSuite\PageCacheWarmerCrawlWorker\Tests\Utils\VarnishStubServer;
-use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
-use MageSuite\PageCacheWarmerCrawlWorker\Job\JobExecutor;
+use MageSuite\PageCacheWarmerCrawlWorker\Job;
+use MageSuite\PageCacheWarmerCrawlWorker\JobExecutor;
 
 class JobExecutorTest extends TestCase
 {
@@ -33,10 +33,10 @@ class JobExecutorTest extends TestCase
         $jobs = [];
 
         for ($i = 0; $i < 500; ++$i) {
-            $jobs[] = new Job($i, $this->server->getBaseUrl() . '/product/' . $i, $i, 'product', 1);
+            $jobs[] = new \MageSuite\PageCacheWarmerCrawlWorker\Job($i, $this->server->getBaseUrl() . '/product/' . $i, $i, 'product', 1);
         }
 
         $executor = new JobExecutor($this->createLogger(), 'cookie');
-        $executor->execute($jobs, 10);
+        $executor->execute($jobs, 30);
     }
 }

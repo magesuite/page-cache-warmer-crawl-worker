@@ -7,8 +7,8 @@ use Doctrine\DBAL\DriverManager;
 
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\FetchMode;
-use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
-use MageSuite\PageCacheWarmerCrawlWorker\Job\JobQueue;
+use MageSuite\PageCacheWarmerCrawlWorker\Job;
+use MageSuite\PageCacheWarmerCrawlWorker\Queue;
 
 /**
  * The idea for the queue is very simple, we forgo any status column as it seems
@@ -23,7 +23,7 @@ use MageSuite\PageCacheWarmerCrawlWorker\Job\JobQueue;
  *
  * Finished jobs are deleted from the table completely so no need for finished status.
  */
-class DatabaseJobQueue implements JobQueue
+class DatabaseQueue implements Queue
 {
     const JOB_TABLE = 'cache_warmup_queue';
     const RETRY_THRESHOLD = '20 minutes';
