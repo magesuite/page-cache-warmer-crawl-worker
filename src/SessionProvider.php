@@ -7,7 +7,6 @@ use GuzzleHttp\Client;
 
 class SessionProvider
 {
-    const MAX_SESSION_VALIDITY = '45 minutes';
     const LOGIN_FORM_PATH = '/customer/account/login/';
     const LOGIN_POST_PATH = '/customer/account/loginPost/';
 
@@ -170,7 +169,8 @@ class SessionProvider
 
         $session = Session::load($this->getSessionFilename($host, $customerGroup));
 
-        if ($session->isOlderThan(self::MAX_SESSION_VALIDITY)) {
+        if (!$session->isValid()) {
+            /* Session was invalidated or has expired */
             return $this->createSession($host, $customerGroup);
         }
 

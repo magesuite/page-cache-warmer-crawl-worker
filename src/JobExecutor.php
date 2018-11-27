@@ -50,8 +50,10 @@ class JobExecutor
 
     protected function sendAsyncWarmupRequest(Job $job): Promise\PromiseInterface
     {
+        $job->setSession($this->sessions->getSession($job->getUrlHost(), $job->getCustomerGroup()));
+
         return $this->client->sendAsync($this->createWarmupRequest($job), [
-            'cookies' => $this->sessions->getSession($job->getUrlHost(), $job->getCustomerGroup()),
+            'cookies' => $job->getSession()->getCookies(),
             /* If there's a redirect we want to know, because it means we did something wrong */
             'allow_redirects' => false,
             'headers' => [
@@ -84,6 +86,8 @@ class JobExecutor
             $results = Promise\settle($promises)->wait();
 
             foreach ($results as $jobNr => $result) {
+                $job = $batch[$jobNr];
+
                 if ($result['state'] === Promise\PromiseInterface::REJECTED) {
                     $exception = $result['reason'];
 
@@ -91,9 +95,9 @@ class JobExecutor
                         $handlerContext = $exception->getHandlerContext();
 
                         if (isset($handlerContext['errno']) && $handlerContext['errno'] === CURLE_OPERATION_TIMEDOUT) {
-                            $batch[$jobNr]->markFailed(Job::FAILED_REASON_TIMEOUT);
+                            $job->markFailed(Job::FAILED_REASON_TIMEOUT);
                         } else {
-                            $batch[$jobNr]->markFailed(Job::FAILED_REASON_CONNECTION);
+                            $job->markFailed(Job::FAILED_REASON_CONNECTION);
                         }
                     } else {
                         throw $exception;
@@ -115,7 +119,11 @@ class JobExecutor
                     continue;
                 }
 
-                $batch[$jobNr]->markCompleted($response->getStatusCode());
+                if ($job->requiresLogin() && !Session::isResponseLoggedIn($response)) {
+                    $job->markFailed(Job::FAILED_REASON_SESSION_EXPIRED, $response->getStatusCode());
+                }
+
+                $job->markCompleted($response->getStatusCode());
             }
 
             $batchNr++;

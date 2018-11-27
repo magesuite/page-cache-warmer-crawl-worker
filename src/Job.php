@@ -78,6 +78,13 @@ class Job
     protected $transferTime;
 
     /**
+     * Last session used for this job's execution
+     *
+     * @var Session|null
+     */
+    protected $session;
+
+    /**
      * @param int $id
      * @param string $url
      * @param int $entityId
@@ -246,6 +253,14 @@ class Job
         $this->transferTime = $transferTime;
     }
 
+    /**
+     * @return bool
+     */
+    public function requiresLogin(): bool
+    {
+        return null !== $this->customerGroup;
+    }
+
     public function toArray(): array
     {
         return [
@@ -256,6 +271,22 @@ class Job
             'fail_reason' => $this->failReason,
             'transfer_time' => $this->transferTime
         ];
+    }
+
+    /**
+     * @return Session|null
+     */
+    public function getSession(): ?Session
+    {
+        return $this->session;
+    }
+
+    /**
+     * @param Session|null $session
+     */
+    public function setSession(?Session $session): void
+    {
+        $this->session = $session;
     }
 
     public function __toString()

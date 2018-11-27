@@ -9,6 +9,7 @@ use Psr\Http\Message\ResponseInterface;
 class Session
 {
     const MAGENTO_VARY_COOKIE = 'X-Magento-Vary';
+    const DEFAULT_MAX_VALIDITY = '45 minutes';
 
     /**
      * @var string
@@ -34,6 +35,11 @@ class Session
      * @var string
      */
     private $filename;
+
+    /**
+     * @var bool
+     */
+    private $isValid = true;
 
     /**
      * @param string $filename
@@ -152,7 +158,7 @@ class Session
      * @param string $timePeriodSpecifier
      * @return bool
      */
-    public function isOlderThan(string $timePeriodSpecifier = '1 day'): bool
+    private function isOlderThan(string $timePeriodSpecifier): bool
     {
         $threshold = new \DateTime();
         $threshold->modify('-' . $timePeriodSpecifier);
@@ -179,6 +185,20 @@ class Session
         }
 
         return false;
+    }
+
+    /**
+     * Marks the session as invalidated so it should be recreated and reauthenticated
+     * and no longer used for any requests.
+     */
+    public function invalidate()
+    {
+        $this->isValid = false;
+    }
+
+    public function isValid()
+    {
+        return $this->isValid && !$this->isOlderThan(self::DEFAULT_MAX_VALIDITY);
     }
 
     public function __destruct()
