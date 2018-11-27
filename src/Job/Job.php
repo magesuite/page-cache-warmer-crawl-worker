@@ -4,6 +4,19 @@ namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
 
 class Job
 {
+    const STATUS_PENDING = 'PENDING';
+    const STATUS_FAILED = 'FAILED';
+    const STATUS_COMPLETED = 'COMPLETED';
+
+    // Connection timeout exceeded, server overloaded?
+    const FAILED_TIMEOUT = 'CONNECTION_TIMEOUT';
+
+    // Site is not available - codes 502, 503, 504
+    const FAILED_UNAVAILABLE = 'SITE_NOT_AVAILABLE';
+
+    // Invalid status code - other than expected 200, 204
+    const FAILED_INVALID_CODE = 'INVALID_STATUS_CODE';
+
     /**
      * @var int
      */
@@ -33,6 +46,11 @@ class Job
      * @var string
      */
     protected $customerGroup;
+
+    /**
+     * @var string
+     */
+    protected $status = self::STATUS_PENDING;
 
     /**
      * @param int $id
@@ -117,5 +135,40 @@ class Job
         return $this->urlComponents['path'] .
             isset($this->urlComponents['query']) ? '?' . $this->urlComponents['query'] : '';
     }
+
+    /**
+     * @return string
+     */
+    public function getStatus(): string
+    {
+        return $this->status;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isFailed(): bool
+    {
+        return $this->status === self::STATUS_FAILED;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isCompleted(): bool
+    {
+        return $this->status === self::STATUS_COMPLETED;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isPending(): bool
+    {
+        return $this->status === self::STATUS_PENDING;
+    }
+
+
+
 
 }
