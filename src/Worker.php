@@ -2,6 +2,12 @@
 
 namespace MageSuite\PageCacheWarmerCrawlWorker;
 
+use MageSuite\PageCacheWarmerCrawlWorker\Customer\CredentialsProvider;
+use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
+use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
+use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
+use MageSuite\PageCacheWarmerCrawlWorker\Job\JobExecutor;
+use MageSuite\PageCacheWarmerCrawlWorker\Queue\Queue;
 use Psr\Log\LoggerInterface;
 
 class Worker

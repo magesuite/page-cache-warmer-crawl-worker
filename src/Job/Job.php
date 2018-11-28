@@ -1,6 +1,8 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
+
+use MageSuite\PageCacheWarmerCrawlWorker\Customer\Session;
 
 class Job
 {
@@ -80,7 +82,7 @@ class Job
     /**
      * Last session used for this job's execution
      *
-     * @var Session|null
+     * @var \MageSuite\PageCacheWarmerCrawlWorker\Customer\Session|null
      */
     protected $session;
 
@@ -274,7 +276,7 @@ class Job
     }
 
     /**
-     * @return Session|null
+     * @return \MageSuite\PageCacheWarmerCrawlWorker\Customer\Session|null
      */
     public function getSession(): ?Session
     {
@@ -282,7 +284,7 @@ class Job
     }
 
     /**
-     * @param Session|null $session
+     * @param \MageSuite\PageCacheWarmerCrawlWorker\Customer\Session|null $session
      */
     public function setSession(?Session $session): void
     {

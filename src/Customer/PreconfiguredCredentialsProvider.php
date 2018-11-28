@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Customer;
 
 class PreconfiguredCredentialsProvider implements CredentialsProvider
 {
@@ -17,13 +17,20 @@ class PreconfiguredCredentialsProvider implements CredentialsProvider
     private $domain;
 
     /**
+     * @var string
+     */
+    private $domainSuffix;
+
+    /**
      * @param string $password In this scenario it's fixed and provided in configuration
      * @param string $domain
+     * @param string $domainSuffix
      */
-    public function __construct(string $password, string $domain)
+    public function __construct(string $password, string $domain, string $domainSuffix = self::DOMAIN_SUFFIX)
     {
         $this->password = $password;
         $this->domain = $domain;
+        $this->domainSuffix = $domainSuffix;
     }
 
     /**
@@ -32,7 +39,7 @@ class PreconfiguredCredentialsProvider implements CredentialsProvider
      */
     private function getUsername(string $customerGroup): string
     {
-        return md5($customerGroup) . '@' . $this->domain . self::DOMAIN_SUFFIX;
+        return md5($customerGroup) . '@' . $this->domain . $this->domainSuffix;
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Customer;
 
 interface CredentialsProvider
 {

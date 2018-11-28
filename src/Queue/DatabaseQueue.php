@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Queue;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -8,8 +8,7 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Driver\Statement;
 use Doctrine\DBAL\FetchMode;
 use Doctrine\DBAL\ParameterType;
-use MageSuite\PageCacheWarmerCrawlWorker\Job;
-use MageSuite\PageCacheWarmerCrawlWorker\Queue;
+use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
 
 /**
  * The idea for the queue is very simple, we forgo any status column as it seems
@@ -60,7 +59,7 @@ class DatabaseQueue implements Queue
 
     /**
      * @param array $data
-     * @return Job
+     * @return \MageSuite\PageCacheWarmerCrawlWorker\Job\Job
      */
     protected function createJob(array $data): Job
     {

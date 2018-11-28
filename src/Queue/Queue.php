@@ -1,8 +1,8 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Queue;
 
-use MageSuite\PageCacheWarmerCrawlWorker\Job;
+use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
 
 interface Queue
 {
@@ -19,7 +19,7 @@ interface Queue
     /**
      * Marks the jobs as sucessfully processed.
      *
-     * @param Job[] $jobs
+     * @param \MageSuite\PageCacheWarmerCrawlWorker\Job\Job[] $jobs
      */
     public function markCompleted(array $jobs);
 }

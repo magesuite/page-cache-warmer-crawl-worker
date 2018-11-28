@@ -1,6 +1,6 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
@@ -8,7 +8,9 @@ use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\TransferStats;
 use GuzzleHttp\Promise;
-
+use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
+use MageSuite\PageCacheWarmerCrawlWorker\Customer\Session;
+use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
 use Psr\Log\LoggerInterface;
 use Psr\Http\Message\RequestInterface;
 
@@ -29,7 +31,7 @@ class JobExecutor
     private $sessions;
 
     /**
-     * @param SessionProvider $sessions
+     * @param \MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider $sessions
      * @param ClientFactory $clientFactory
      * @param LoggerInterface $logger
      */
@@ -121,6 +123,7 @@ class JobExecutor
 
                 if ($job->requiresLogin() && !Session::isResponseLoggedIn($response)) {
                     $job->markFailed(Job::FAILED_REASON_SESSION_EXPIRED, $response->getStatusCode());
+                    continue;
                 }
 
                 $job->markCompleted($response->getStatusCode());

@@ -1,9 +1,9 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Http;
 
 use GuzzleHttp\Client;
-use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Uri;
 use Psr\Http\Message\RequestInterface;
@@ -66,8 +66,7 @@ class ClientFactory
      */
     public function createClient(int $timeout = self::DEFAULT_TIMEOUT): Client
     {
-        $stack = new HandlerStack();
-        $stack->setHandler(new CurlHandler());
+        $stack = HandlerStack::create(new CurlMultiHandler());
         $stack->push([$this, 'varnishRewriteMiddleware'], 'varnishRequestRewrite');
 
         return new Client([

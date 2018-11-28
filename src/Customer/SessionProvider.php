@@ -1,7 +1,8 @@
 <?php
 
-namespace MageSuite\PageCacheWarmerCrawlWorker;
+namespace MageSuite\PageCacheWarmerCrawlWorker\Customer;
 
+use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use Psr\Log\LoggerInterface;
 use GuzzleHttp\Client;
 
@@ -9,6 +10,7 @@ class SessionProvider
 {
     const LOGIN_FORM_PATH = '/customer/account/login/';
     const LOGIN_POST_PATH = '/customer/account/loginPost/';
+    const FORM_KEY_REGEX = '/name="form_key"\s+type="hidden"\s+value="([^"]+)"/';
 
     /**
      * @var Client
@@ -86,22 +88,14 @@ class SessionProvider
         return sprintf('http://%s/%s', $session->getHost(), ltrim($path, '/'));
     }
 
-    private function authorizeSession(Session $session)
+    private function getFormKey(Session $session): string
     {
-        /** Clear old cookies just to be sure */
-        $session->getCookies()->clear();
-
         $response = $this->client->get($this->createUrl($session, self::LOGIN_FORM_PATH), [
             'cookies' => $session->getCookies(),
             'allow_redirects' => [
-                'referer' => true
-            ]
-        ]);
-
-        $response = $this->client->get($this->createUrl($session, self::LOGIN_FORM_PATH), [
-            'cookies' => $session->getCookies(),
-            'allow_redirects' => [
-                'referer' => true
+                'max' => 4,
+                'strict' => false,
+                'referer' => true,
             ]
         ]);
 
@@ -109,13 +103,19 @@ class SessionProvider
             throw new \RuntimeException(sprintf('Could not open log in page for host "%s"', $session->getHost()));
         }
 
-        $formKeyCookie = $session->getCookies()->getCookieByName('form_key');
-
-        if (!$formKeyCookie) {
+        if (!preg_match(self::FORM_KEY_REGEX, $response->getBody()->getContents(), $matches)) {
             throw new \RuntimeException(sprintf('Could not get form key from cookie on host "%s"', $session->getHost()));
         }
 
-        $formKey = $formKeyCookie->getValue();
+        return trim($matches[1]);
+    }
+
+    private function authorizeSession(Session $session)
+    {
+        /** Clear old cookies just to be sure */
+        $session->getCookies()->clear();
+
+        $formKey = $this->getFormKey($session);
 
         list($username, $password) = $this->credentials->getCredentials($session->getCustomerGroup());
 
@@ -129,7 +129,9 @@ class SessionProvider
                 ]
             ],
             'allow_redirects' => [
-                'referer' => true
+                'max' => 4,
+                'strict' => false,
+                'referer' => true,
             ]
         ]);
 
