@@ -104,7 +104,7 @@ class SessionProvider
         }
 
         if (!preg_match(self::FORM_KEY_REGEX, $response->getBody()->getContents(), $matches)) {
-            throw new \RuntimeException(sprintf('Could not get form key from cookie on host "%s"', $session->getHost()));
+            throw new \RuntimeException(sprintf('Could not get login form key "%s"', $session->getHost()));
         }
 
         return trim($matches[1]);
@@ -112,6 +112,8 @@ class SessionProvider
 
     private function authorizeSession(Session $session)
     {
+        $this->logger->debug(sprintf('Authorizing session: %s', $session));
+
         /** Clear old cookies just to be sure */
         $session->getCookies()->clear();
 
@@ -139,7 +141,7 @@ class SessionProvider
             throw new \RuntimeException(sprintf('Unexpected status code received for log in: %d', $response->getStatusCode()));
         }
 
-        if ($session::isResponseLoggedIn($response)) {
+        if (!$session::isResponseLoggedIn($response)) {
             throw new \RuntimeException(sprintf('Did not log in successfully as customer group %s at host %s, no vary cookie found',
                 $session->getCustomerGroup(),
                 $session->getHost()

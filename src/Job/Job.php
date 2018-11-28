@@ -293,6 +293,13 @@ class Job
 
     public function __toString()
     {
-        return sprintf('Job(%s, %s : %s, %s)', $this->id, $this->url, $this->customerGroup, $this->status);
+        return sprintf('Job { id: %s, url: %s, customerGroup: %s,%s%s %s }',
+            $this->id,
+            $this->url,
+            $this->customerGroup ? $this->customerGroup : 'anon',
+            $this->status,
+            $this->isFailed() ? sprintf(' failReason: %s, ', $this->failReason) : '',
+            $this->transferTime ? sprintf(' took: %.2fs, ', $this->transferTime) : ''
+        );
     }
 }

@@ -201,6 +201,16 @@ class Session
         return $this->isValid && !$this->isOlderThan(self::DEFAULT_MAX_VALIDITY);
     }
 
+    public function __toString()
+    {
+        return sprintf('Sess { customerGroup: %s, host: %s, created: %s, %s }',
+            $this->customerGroup ? $this->customerGroup : 'anon',
+            $this->host,
+            $this->created->format('Y.m.d H:i:s'),
+            $this->isValid() ? 'VALID' : 'INVALIDATED'
+        );
+    }
+
     public function __destruct()
     {
         $this->save();

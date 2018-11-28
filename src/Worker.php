@@ -80,16 +80,16 @@ class Worker
      * @param int $maxJobs
      * @param int $batchSize
      * @param string|null $varnishUri
-     * @param string|null $httpDebugLog
+     * @param bool $debuggLogging
      */
     public function work(
         int $concurrency = 1,
         int $maxJobs = 200,
         int $batchSize = 50,
         string $varnishUri = null,
-        string $httpDebugLog = null
+        bool $debuggLogging = false
     ) {
-        $clientFactory = new ClientFactory($varnishUri, $httpDebugLog);
+        $clientFactory = new ClientFactory($this->logger, $varnishUri, $debuggLogging);
         $sessionProvider = new SessionProvider($this->credentialsProvider, $clientFactory, $this->logger);
         $executor = new JobExecutor($sessionProvider, $clientFactory, $this->logger);
 
