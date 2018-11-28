@@ -80,6 +80,11 @@ class Job
     protected $transferTime;
 
     /**
+     * @var bool|null
+     */
+    protected $wasAlreadyWarm = null;
+
+    /**
      * Last session used for this job's execution
      *
      * @var \MageSuite\PageCacheWarmerCrawlWorker\Customer\Session|null
@@ -213,7 +218,7 @@ class Job
         $this->statusCode = $statusCode;
     }
 
-    public function markCompleted(int $statusCode = null)
+    public function markCompleted(int $statusCode = null, bool $wasAlreadyWarm = false)
     {
         if ($this->status !== self::STATUS_PENDING) {
             throw new \DomainException('Only pending status can be changed to completed');
@@ -221,6 +226,7 @@ class Job
 
         $this->status = self::STATUS_COMPLETED;
         $this->statusCode = $statusCode;
+        $this->wasAlreadyWarm = $wasAlreadyWarm;
     }
 
     /**
@@ -291,15 +297,24 @@ class Job
         $this->session = $session;
     }
 
+    /**
+     * @return bool|null
+     */
+    public function wasAlreadyWarm(): ?bool
+    {
+        return $this->wasAlreadyWarm;
+    }
+
     public function __toString()
     {
-        return sprintf('Job { id: %s, url: %s, customerGroup: %s,%s%s %s }',
+        return sprintf('Job { id: %s, url: %s, customerGroup: %s, status: %s%s%s%s }',
             $this->id,
             $this->url,
             $this->customerGroup ? $this->customerGroup : 'anon',
             $this->status,
-            $this->isFailed() ? sprintf(' failReason: %s, ', $this->failReason) : '',
-            $this->transferTime ? sprintf(' took: %.2fs, ', $this->transferTime) : ''
+            $this->isFailed() ? sprintf(', failReason: %s', $this->failReason) : '',
+            $this->transferTime ? sprintf(', took: %.2fs', $this->transferTime) : '',
+            null !== $this->wasAlreadyWarm ? sprintf(', wasAlreadyWarm: %s', $this->wasAlreadyWarm ? 'yes' : 'no') : ''
         );
     }
 }

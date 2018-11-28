@@ -51,10 +51,19 @@ class DatabaseQueue implements Queue
         $date = new \DateTime('now', new \DateTimeZone('UTC'));
 
         if (null !== $offset) {
-            $date->modify($offset);
+            $date->modify('-' . $offset);
         }
 
         return $date;
+    }
+    
+    private function quoteIds(array $ids): string
+    {
+        $connection = $this->connection;
+
+        return implode(',', array_map(function($id) use ($connection) {
+            return $connection->quote((int)$id, ParameterType::INTEGER);
+        }, $ids));
     }
 
     /**
@@ -79,12 +88,12 @@ class DatabaseQueue implements Queue
      */
     protected function getAcquireJobsStatement(int $count): Statement
     {
-        $statement = $this->connection->prepare(
-            'SELECT * FROM ' . self::JOB_TABLE . ' WHERE ' .
-                'processing_started_at IS NULL OR processing_started_at < :threshold ' .
-                'ORDER BY priority DESC LIMIT 0, ' . $count
-        );
-
+        $statement = $this->connection->prepare(sprintf(
+            'SELECT * FROM %s WHERE processing_started_at IS NULL OR processing_started_at < :threshold ORDER BY priority DESC LIMIT 0, %s FOR UPDATE',
+            self::JOB_TABLE,
+            $count
+        ));
+        
         $statement->bindValue('threshold', $this->createDatabaseDate(self::RETRY_THRESHOLD), 'datetime');
         
         return $statement;
@@ -97,13 +106,13 @@ class DatabaseQueue implements Queue
      */
     protected function getStartJobsStatement(array $ids): Statement
     {
-        $statement = $this->connection->prepare(
-            'UPDATE ' . self::JOB_TABLE . ' SET processing_started_at = :timestamp WHERE id IN (:ids)'
-        );
+        $statement = $this->connection->prepare(sprintf(
+            'UPDATE %s SET processing_started_at = :timestamp WHERE id IN (%s)',
+            self::JOB_TABLE,
+            $this->quoteIds($ids)
+        ));
 
         $statement->bindValue('timestamp', $this->createDatabaseDate(), 'datetime');
-        // They shall be scaped but freaking DBAL doesn't want to do it according to it's own docs
-        $statement->bindValue('ids', implode(',', $ids));
 
         return $statement;
     }
@@ -115,11 +124,13 @@ class DatabaseQueue implements Queue
      */
     protected function getFinishJobsStatement(array $ids): Statement
     {
-        $statement = $this->connection->prepare(
-            'DELETE FROM ' . self::JOB_TABLE . ' WHERE id IN (:ids)'
-        );
+        $statement = $this->connection->prepare(sprintf(
+            'DELETE FROM %s WHERE id IN (%s)',
+            self::JOB_TABLE,
+            $this->quoteIds($ids)
+        ));
 
-        $statement->bindValue('ids', $ids, Connection::PARAM_INT_ARRAY);
+        $statement->bindValue('ids', implode(',', $ids));
 
         return $statement;
     }
@@ -139,8 +150,12 @@ class DatabaseQueue implements Queue
             $acquireStatement->execute();
             $jobData = $acquireStatement->fetchAll(FetchMode::ASSOCIATIVE);
 
+            if (empty($jobData)) {
+                return [];
+            }
+
             $jobs = array_map([$this, 'createJob'], $jobData);
-            $ids = array_map(function(array $data) { return $data['id']; }, $jobData);
+            $ids = array_map(function(array $data) { return (int)$data['id']; }, $jobData);
 
             $startStatement = $this->getStartJobsStatement($ids);
             $startStatement->execute();
@@ -161,10 +176,10 @@ class DatabaseQueue implements Queue
      */
     public function markCompleted(array $jobs)
     {
-        $statement = $this->getFinishJobsStatement(
-            array_map(function(Job $job) { return $job->getId(); }, $jobs)
-        );
-
-        $statement->execute();
+//        $statement = $this->getFinishJobsStatement(
+//            array_map(function(Job $job) { return $job->getId(); }, $jobs)
+//        );
+//
+//        $statement->execute();
     }
 }

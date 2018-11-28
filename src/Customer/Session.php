@@ -110,12 +110,19 @@ class Session
 
     public static function createFromArray(string $filename, array $data): Session
     {
-        return new static($filename, $data['host'], $data['customerGroup'], $data['cookies']);
+        $session = new static($filename, $data['host'], $data['customerGroup'], $data['cookies']);
+
+        $session->isValid = $data['is_valid'];
+        $session->created = new \DateTime($data['created']);
+
+        return $session;
     }
 
     public function toArray(): array
     {
         return [
+            'created' => '@' . $this->created->getTimestamp(),
+            'is_valid' => $this->isValid,
             'host' => $this->host,
             'customerGroup' => $this->customerGroup,
             'cookies' => $this->cookies->toArray(),
@@ -194,6 +201,7 @@ class Session
     public function invalidate()
     {
         $this->isValid = false;
+        $this->save();
     }
 
     public function isValid()

@@ -11,11 +11,14 @@ use GuzzleHttp\Promise;
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\Session;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Http\Message\RequestInterface;
 
 class JobExecutor
 {
+    const CACHE_INFO_HEADER = 'X-Magento-Cache-Debug';
+
     /**
      * @var Client
      */
@@ -25,6 +28,7 @@ class JobExecutor
      * @var LoggerInterface
      */
     protected $logger;
+
     /**
      * @var SessionProvider
      */
@@ -69,6 +73,15 @@ class JobExecutor
         ]);
     }
 
+    private function isCacheHit(ResponseInterface $response): bool
+    {
+        if (!$response->hasHeader(self::CACHE_INFO_HEADER)) {
+            return false;
+        }
+
+        return strtoupper($response->getHeader(self::CACHE_INFO_HEADER)[0]) == 'HIT';
+    }
+
     /**
      * @param array $jobs List of jobs to execute
      * @param int $concurrentRequests Number of requests made in parallel
@@ -80,6 +93,8 @@ class JobExecutor
 
         /** @var $batch Job[] */
         while (!empty($batch = array_slice($jobs, $batchNr * $concurrentRequests, $concurrentRequests))) {
+            $this->logger->debug(sprintf('Starting execution of %d jobs concurrently', count($jobs)));
+
             if ($delay !== 0.0) {
                 floor($delay * 1000000.0);
             }
@@ -117,16 +132,14 @@ class JobExecutor
                     } else {
                         $batch[$jobNr]->markFailed(Job::FAILED_REASON_INVALID_CODE);
                     }
-
-                    continue;
-                }
-
-                if ($job->requiresLogin() && !Session::isResponseLoggedIn($response)) {
+                } elseif ($job->requiresLogin() && !Session::isResponseLoggedIn($response)) {
                     $job->markFailed(Job::FAILED_REASON_SESSION_EXPIRED, $response->getStatusCode());
-                    continue;
+                    $job->getSession()->invalidate();
+                } else {
+                    $job->markCompleted($response->getStatusCode(), $this->isCacheHit($response));
                 }
 
-                $job->markCompleted($response->getStatusCode());
+                $this->logger->info(sprintf('Executed: %s', $job));
             }
 
             $batchNr++;

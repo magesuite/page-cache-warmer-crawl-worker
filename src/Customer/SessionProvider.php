@@ -158,9 +158,13 @@ class SessionProvider
         $filename = $this->getSessionFilename($host, $customerGroup);
         $session = new Session($filename, $host, $customerGroup);
 
+        $this->logger->debug(sprintf('Created: %s', (string)$session));
+
         if (null !== $customerGroup) {
             $this->authorizeSession($session);
         }
+
+        $this->logger->debug(sprintf('Authorized: %s', (string)$session));
 
         /* Force save session so it might be reused at once. */
         $session->save();
@@ -176,11 +180,13 @@ class SessionProvider
      */
     public function getSession(string $host, string $customerGroup = null, bool $reauthorize = false)
     {
-        if (!$this->hasSession($host) || $reauthorize) {
+        if (!$this->hasSession($host, $customerGroup) || $reauthorize) {
             return $this->createSession($host, $customerGroup);
         }
 
         $session = Session::load($this->getSessionFilename($host, $customerGroup));
+
+        $this->logger->debug(sprintf('Loaded: %s', (string)$session));
 
         if (!$session->isValid()) {
             /* Session was invalidated or has expired */

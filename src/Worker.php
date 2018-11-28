@@ -2,24 +2,34 @@
 
 namespace MageSuite\PageCacheWarmerCrawlWorker;
 
+use Magento\Framework\Profiler\Driver\Standard\Stat;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\CredentialsProvider;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\JobExecutor;
+use MageSuite\PageCacheWarmerCrawlWorker\Job\Stats;
 use MageSuite\PageCacheWarmerCrawlWorker\Queue\Queue;
 use Psr\Log\LoggerInterface;
 
 class Worker
 {
     /**
+     * Minimum runtime in seconds.
+     * During this time, we'll wait for jobs to come if none.
+     */
+    const DEFAULT_MIN_RUNTIME = 10;
+
+    /**
      * @var CredentialsProvider
      */
     private $credentialsProvider;
+
     /**
      * @var Queue
      */
     private $queue;
+
     /**
      * @var LoggerInterface
      */
@@ -36,75 +46,49 @@ class Worker
     }
 
     /**
-     * @param Job[] $jobs
-     * @param array $stats
-     * @return array
-     */
-    private function aggregateStats(array $jobs, array &$stats = null): array
-    {
-        if (null === $stats) {
-            $stats = [
-                'total' => 0,
-                'completed' => 0,
-                'failed' => 0,
-                'fail_reasons' => [],
-                'status_codes' => []
-            ];
-        }
-
-        foreach ($jobs as $job) {
-            if ($job->isFailed()) {
-                $stats['failed']++;
-
-                if (!isset($stats['fail_reasons'][$job->getFailReason()])) {
-                    $stats['fail_reasons'][$job->getFailReason()] = 0;
-                }
-
-                $stats['fail_reasons'][$job->getFailReason()]++;
-            } else {
-                $stats['completed']++;
-            }
-
-            if (!isset($stats['status_codes'][$job->getStatusCode()])) {
-                $stats['status_codes'][$job->getStatusCode()] = 0;
-            }
-
-            $stats['status_codes'][$job->getStatusCode()]++;
-        }
-
-        return $stats;
-    }
-
-    /**
      * @param int $concurrency
      * @param int $maxJobs
      * @param int $batchSize
      * @param string|null $varnishUri
      * @param bool $debuggLogging
+     * @param int $minRuntime
      */
     public function work(
         int $concurrency = 1,
         int $maxJobs = 200,
         int $batchSize = 50,
         string $varnishUri = null,
-        bool $debuggLogging = false
+        bool $debuggLogging = false,
+        int $minRuntime = self::DEFAULT_MIN_RUNTIME
     ) {
         $clientFactory = new ClientFactory($this->logger, $varnishUri, $debuggLogging);
         $sessionProvider = new SessionProvider($this->credentialsProvider, $clientFactory, $this->logger);
         $executor = new JobExecutor($sessionProvider, $clientFactory, $this->logger);
 
         $jobsLeft = $maxJobs;
-        $stats = null;
+        $jobsProcessed = 0;
+        $batchNr = 0;
+        $totalStats = new Stats();
 
         while (count($jobBatch = $this->queue->acquireJobs(min($jobsLeft, $batchSize)))) {
-            $this->logger->debug(sprintf('Starting batch, jobs left %d/%d', $jobsLeft, $maxJobs));
+            $batchNr++;
+            $this->logger->debug(sprintf('Starting batch %d, acquired %d jobs, max %d jobs until exit', $batchNr, count($jobBatch), $jobsLeft));
             $executor->execute($jobBatch, $concurrency);
 
-            $this->aggregateStats($jobBatch,$stats);
+            $this->queue->markCompleted(array_filter($jobBatch, function(Job $job) { return $job->isCompleted(); }));
+
+            $batchStats = new Stats($jobBatch);
+            $totalStats->add($batchStats);
+
+            $this->logger->debug(sprintf('Finished batch %d - %s', $batchNr, $batchStats->asString()));
 
             $jobsLeft -= $batchSize;
+            $jobsProcessed += count($jobBatch);
         }
 
-        $this->logger->info("Finished work run: \n" . print_r($stats, true));
+        $this->logger->info(sprintf("Finished work run after %d batches:\n%s",
+            $batchNr,
+            $totalStats->asString(true)
+        ));
     }
 }

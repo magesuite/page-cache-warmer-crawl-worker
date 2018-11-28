@@ -65,6 +65,7 @@ class ClientFactory
                     )
                     ->withHeader('Host', $request->getUri()->getHost())
                     ->withHeader('X-Forwarded-Proto', $request->getUri()->getScheme())
+                    ->withHeader('X-Forwarded-Host', $request->getUri()->getHost())
                 ;
             }
 
