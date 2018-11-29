@@ -38,14 +38,16 @@ class JobExecutor
      * @param \MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider $sessions
      * @param ClientFactory $clientFactory
      * @param LoggerInterface $logger
+     * @param int $requestTimeout
      */
     public function __construct(
         SessionProvider $sessions,
         ClientFactory $clientFactory,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT
     ) {
         $this->logger = $logger;
-        $this->client = $clientFactory->createClient();
+        $this->client = $clientFactory->createClient($requestTimeout);
         $this->sessions = $sessions;
     }
 

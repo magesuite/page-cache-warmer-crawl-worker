@@ -17,9 +17,9 @@ interface Queue
     public function acquireJobs(int $count): array;
 
     /**
-     * Marks the jobs as sucessfully processed.
+     * Updates job status in the queue.
      *
      * @param \MageSuite\PageCacheWarmerCrawlWorker\Job\Job[] $jobs
      */
-    public function markCompleted(array $jobs);
+    public function updateStatus(array $jobs);
 }

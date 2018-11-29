@@ -36,16 +36,18 @@ class SessionProvider
      * @param CredentialsProvider $credentials
      * @param ClientFactory $clientFactory
      * @param LoggerInterface $logger
+     * @param int $requestTimeout
      * @param string|null $storageDir
      */
     public function __construct(
         CredentialsProvider $credentials,
         ClientFactory $clientFactory,
         LoggerInterface $logger,
+        int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT,
         string $storageDir = null
     ) {
         $this->logger = $logger;
-        $this->client = $clientFactory->createClient();
+        $this->client = $clientFactory->createClient($requestTimeout);
         $this->storageDir = $storageDir;
 
         if (null == $this->storageDir) {

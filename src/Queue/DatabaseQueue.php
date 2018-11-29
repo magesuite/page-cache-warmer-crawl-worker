@@ -35,7 +35,6 @@ class DatabaseQueue implements Queue
 
     /**
      * @param array $connectionParams Doctrine DBAL connection params
-     * @throws \Doctrine\DBAL\DBALException
      */
     public function __construct(array $connectionParams)
     {
@@ -56,7 +55,15 @@ class DatabaseQueue implements Queue
 
         return $date;
     }
-    
+
+    /**
+     * Quotes array of int ids for DBAL.
+     *
+     * Unfortunately DBAL cannot do this itself in a prepared statement.
+     *
+     * @param int[] $ids
+     * @return string
+     */
     private function quoteIds(array $ids): string
     {
         $connection = $this->connection;
@@ -67,11 +74,27 @@ class DatabaseQueue implements Queue
     }
 
     /**
+     * @param Job[] $jobs
+     * @return array
+     */
+    private function getJobIds(array $jobs): array
+    {
+        return array_map(function(Job $job) {
+            return $job->getId();
+        }, $jobs);
+    }
+
+    /**
      * @param array $data
-     * @return \MageSuite\PageCacheWarmerCrawlWorker\Job\Job
+     * @return Job
      */
     protected function createJob(array $data): Job
     {
+        if (!$data['customer_group']) {
+            // Normalize "not logged in" customer group to NULL because it can be also `0`
+            $data['customer_group'] = null;
+        }
+
         return new Job(
             $data['id'],
             $data['url'],
@@ -82,9 +105,17 @@ class DatabaseQueue implements Queue
     }
 
     /**
+     * @param array $dataRows
+     * @return Job[]
+     */
+    private function createJobs(array $dataRows): array
+    {
+        return array_map([$this, 'createJob'], $dataRows);
+    }
+
+    /**
      * @param int $count Max items to be fetched
      * @return Statement
-     * @throws \Doctrine\DBAL\DBALException
      */
     protected function getAcquireJobsStatement(int $count): Statement
     {
@@ -102,7 +133,6 @@ class DatabaseQueue implements Queue
     /**
      * @param array $ids
      * @return Statement
-     * @throws \Doctrine\DBAL\DBALException
      */
     protected function getStartJobsStatement(array $ids): Statement
     {
@@ -120,7 +150,6 @@ class DatabaseQueue implements Queue
     /**
      * @param array $ids
      * @return Statement
-     * @throws \Doctrine\DBAL\DBALException
      */
     protected function getFinishJobsStatement(array $ids): Statement
     {
@@ -137,9 +166,6 @@ class DatabaseQueue implements Queue
 
     /**
      * {@inheritdoc}
-     *
-     * @throws \Doctrine\DBAL\ConnectionException
-     * @throws \Exception
      */
     public function acquireJobs(int $count): array
     {
@@ -148,17 +174,14 @@ class DatabaseQueue implements Queue
         try {
             $acquireStatement = $this->getAcquireJobsStatement($count);
             $acquireStatement->execute();
-            $jobData = $acquireStatement->fetchAll(FetchMode::ASSOCIATIVE);
 
-            if (empty($jobData)) {
-                return [];
+            $jobs = $this->createJobs(
+                $acquireStatement->fetchAll(FetchMode::ASSOCIATIVE)
+            );
+
+            if (!empty($jobs)) {
+                $this->getStartJobsStatement($this->getJobIds($jobs))->execute();
             }
-
-            $jobs = array_map([$this, 'createJob'], $jobData);
-            $ids = array_map(function(array $data) { return (int)$data['id']; }, $jobData);
-
-            $startStatement = $this->getStartJobsStatement($ids);
-            $startStatement->execute();
 
             $this->connection->commit();
         } catch (\Exception $exception) {
@@ -172,14 +195,16 @@ class DatabaseQueue implements Queue
 
     /**
      * @param array $jobs
-     * @throws \Doctrine\DBAL\DBALException
      */
-    public function markCompleted(array $jobs)
+    public function updateStatus(array $jobs)
     {
-//        $statement = $this->getFinishJobsStatement(
-//            array_map(function(Job $job) { return $job->getId(); }, $jobs)
-//        );
-//
-//        $statement->execute();
+        /* As described at the top - finished jobs are removed from the queue,
+         * jobs to be retried are left alone, the `processing_started_at` column
+         * has already been updated during execution. */
+        $finishedJobs = array_filter($jobs, function (Job $job) {
+            return $job->isCompleted();
+        });
+
+        $this->getFinishJobsStatement($this->getJobIds($finishedJobs))->execute();
     }
 }
