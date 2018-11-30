@@ -112,15 +112,22 @@ class SessionProvider
         return trim($matches[1]);
     }
 
-    private function authorizeSession(Session $session)
+    private function initialize(Session $session)
     {
         $this->logger->debug(sprintf('Authorizing session: %s', $session));
 
-        /** Clear old cookies just to be sure */
-        $session->getCookies()->clear();
+        /* Clear old cookies just to be sure. */
+        $session->reset();
 
         $formKey = $this->getFormKey($session);
 
+        if ($session->isAnonymous()) {
+            /* The form key request is enough to get the session cookie as the login page is an
+             * uncacheable page that shall always create a new session so skip log in once we have that. */
+            return $session;
+        }
+
+        /* The form key request is enough to get the session cookie */
         list($username, $password) = $this->credentials->getCredentials($session->getCustomerGroup());
 
         $response = $this->client->post($this->createUrl($session, self::LOGIN_POST_PATH), [
@@ -143,11 +150,8 @@ class SessionProvider
             throw new \RuntimeException(sprintf('Unexpected status code received for log in: %d', $response->getStatusCode()));
         }
 
-        if (!$session::doesResponseHaveCustomerVary($response)) {
-            throw new \RuntimeException(sprintf('Did not log in successfully as customer group %s at host %s, no vary cookie found',
-                $session->getCustomerGroup(),
-                $session->getHost()
-            ));
+        if (!$session->isValid()) {
+            throw new \RuntimeException(sprintf('Could not authorize session: %s', (string)$session));
         }
 
         return $session;
@@ -155,18 +159,14 @@ class SessionProvider
 
     private function createSession(string $host, string $customerGroup = null): Session
     {
-        /* Remove any preexsting sessions with these parameters */
-        $this->deleteSession($host, $customerGroup);
         $filename = $this->getSessionFilename($host, $customerGroup);
         $session = new Session($filename, $host, $customerGroup);
 
         $this->logger->debug(sprintf('Created: %s', (string)$session));
 
-        if (null !== $customerGroup) {
-            $this->authorizeSession($session);
-        }
+        $this->initialize($session);
 
-        $this->logger->debug(sprintf('Authorized: %s', (string)$session));
+        $this->logger->debug(sprintf('Initialized: %s', (string)$session));
 
         /* Force save session so it might be reused at once. */
         $session->save();
@@ -177,12 +177,11 @@ class SessionProvider
     /**
      * @param string $host Shop hostname
      * @param string|null $customerGroup If null then public/anonymous session is returned
-     * @param bool $reauthorize If true new authorized session will be created
      * @return Session
      */
-    public function getSession(string $host, string $customerGroup = null, bool $reauthorize = false)
+    public function getSession(string $host, string $customerGroup = null)
     {
-        if (!$this->hasSession($host, $customerGroup) || $reauthorize) {
+        if (!$this->hasSession($host, $customerGroup)) {
             return $this->createSession($host, $customerGroup);
         }
 
@@ -191,7 +190,6 @@ class SessionProvider
         $this->logger->debug(sprintf('Loaded: %s', (string)$session));
 
         if (!$session->isValid()) {
-            /* Session was invalidated or has expired */
             return $this->createSession($host, $customerGroup);
         }
 

@@ -120,7 +120,7 @@ class DatabaseQueue implements Queue
     protected function getAcquireJobsStatement(int $count): Statement
     {
         $statement = $this->connection->prepare(sprintf(
-            'SELECT * FROM %s WHERE processing_started_at IS NULL OR processing_started_at < :threshold ORDER BY priority DESC LIMIT 0, %s FOR UPDATE',
+            'SELECT * FROM %s WHERE processing_started_at IS NULL OR processing_started_at < :threshold ORDER BY priority DESC, id ASC LIMIT 0, %s FOR UPDATE',
             self::JOB_TABLE,
             $count
         ));
@@ -206,5 +206,14 @@ class DatabaseQueue implements Queue
         });
 
         $this->getFinishJobsStatement($this->getJobIds($finishedJobs))->execute();
+    }
+
+    public function __destruct()
+    {
+        if ($this->connection->isTransactionActive()) {
+            $this->connection->rollBack();
+        }
+
+        $this->connection->close();
     }
 }

@@ -2,6 +2,8 @@
 
 namespace MageSuite\PageCacheWarmerCrawlWorker\Job;
 
+use Symfony\Component\Stopwatch\Stopwatch;
+
 class Stats
 {
     /**
@@ -42,6 +44,11 @@ class Stats
     private $statusCodes = [];
 
     /**
+     * @var Stopwatch
+     */
+    private $stopwatch;
+
+    /**
      * @param array $jobs
      */
     public function __construct(array $jobs = [])
@@ -49,6 +56,26 @@ class Stats
         foreach ($jobs as $job) {
             $this->addForJob($job);
         }
+    }
+
+    public function startTimer()
+    {
+        $this->stopwatch = new Stopwatch();
+        $this->stopwatch->start('work');
+    }
+
+    public function stopTimer()
+    {
+        $this->stopwatch->stop('work');
+    }
+
+    public function getDuration(): float
+    {
+        if (!$this->stopwatch) {
+            return 0.0;
+        }
+
+        return floatval($this->stopwatch->getEvent('work')->getDuration() / 1E3);
     }
 
     private function incrementFailReason(string $failReason = null, int $count = 1)
@@ -102,6 +129,7 @@ class Stats
         $this->completed += $stats->completed;
         $this->pending += $stats->pending;
         $this->failed += $stats->failed;
+        $this->alreadyWarm += $stats->alreadyWarm;
 
         foreach ($stats->statusCodes as $code => $count) {
             $this->incrementStatusCode($code, $count);

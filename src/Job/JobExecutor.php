@@ -9,7 +9,6 @@ use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\TransferStats;
 use GuzzleHttp\Promise;
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
-use MageSuite\PageCacheWarmerCrawlWorker\Customer\Session;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
@@ -18,6 +17,11 @@ use Psr\Http\Message\RequestInterface;
 class JobExecutor
 {
     const CACHE_INFO_HEADER = 'X-Magento-Cache-Debug';
+
+    const DEFAULT_WARMUP_HEADERS = [
+        'X-Warmup' => 'yes',
+        'Accept-Encoding' => 'gzip, deflate',
+    ];
 
     /**
      * @var Client
@@ -33,22 +37,29 @@ class JobExecutor
      * @var SessionProvider
      */
     private $sessions;
+    /**
+     * @var array
+     */
+    private $extraWarmupHeaders;
 
     /**
      * @param \MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider $sessions
      * @param ClientFactory $clientFactory
      * @param LoggerInterface $logger
      * @param int $requestTimeout
+     * @param array $extraWarmupHeaders
      */
     public function __construct(
         SessionProvider $sessions,
         ClientFactory $clientFactory,
         LoggerInterface $logger,
-        int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT
+        int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT,
+        array $extraWarmupHeaders = self::DEFAULT_WARMUP_HEADERS
     ) {
         $this->logger = $logger;
         $this->client = $clientFactory->createClient($requestTimeout);
         $this->sessions = $sessions;
+        $this->extraWarmupHeaders = $extraWarmupHeaders;
     }
 
     protected function createWarmupRequest(Job $job): RequestInterface
@@ -64,11 +75,7 @@ class JobExecutor
             'cookies' => $job->getSession()->getCookies(),
             /* If there's a redirect we want to know, because it means we did something wrong */
             'allow_redirects' => false,
-            'headers' => [
-                /* This header instructs our varnish to avoid returning the body.
-                 * The expected code is 204 (No Content), request is still cached but bandwidth saved */
-                'X-Warmup' => 'yes',
-            ],
+            'headers' => $this->extraWarmupHeaders,
             'on_stats' => function (TransferStats $stats) use ($job) {
                 $job->setTransferTime($stats->getTransferTime());
             }
@@ -95,7 +102,7 @@ class JobExecutor
 
         /** @var $batch Job[] */
         while (!empty($batch = array_slice($jobs, $batchNr * $concurrentRequests, $concurrentRequests))) {
-            $this->logger->debug(sprintf('Starting execution of %d jobs concurrently', count($jobs)));
+            $this->logger->debug(sprintf('Starting execution of %d jobs concurrently', count($batch)));
 
             if ($delay !== 0.0) {
                 floor($delay * 1000000.0);
@@ -134,9 +141,9 @@ class JobExecutor
                     } else {
                         $batch[$jobNr]->markFailed(Job::FAILED_REASON_INVALID_CODE);
                     }
-                } elseif ($job->requiresLogin() && !Session::doesResponseHaveCustomerVary($response)) {
+                } elseif (!$job->getSession()->isValid()) {
+                    /* Somehow the session has expired in the meantime (really fringe case), so fail the job */
                     $job->markFailed(Job::FAILED_REASON_SESSION_EXPIRED, $response->getStatusCode());
-                    $job->getSession()->invalidate();
                 } else {
                     $job->markCompleted($response->getStatusCode(), $this->isCacheHit($response));
                 }

@@ -47,7 +47,12 @@ class Worker
         'warmup_requests_timeout' => ClientFactory::DEFAULT_TIMEOUT,
 
         /* Max timeout for login related requests */
-        'session_requests_timeout' => ClientFactory::DEFAULT_TIMEOUT
+        'session_requests_timeout' => ClientFactory::DEFAULT_TIMEOUT,
+
+        /* Headers added to warmup requests.
+         * Accept-encoding is a must if you compress your responses at the backend!
+         * Also make sure that your varnish normalizes this header. */
+        'warmup_headers' => JobExecutor::DEFAULT_WARMUP_HEADERS,
     ];
 
     /**
@@ -106,7 +111,8 @@ class Worker
             $this->createSessionProvider($settings),
             $this->createClientFactory($settings),
             $this->logger,
-            $settings['warmup_requests_timeout']
+            $settings['warmup_requests_timeout'],
+            $settings['warmup_headers']
         );
     }
 
@@ -125,10 +131,9 @@ class Worker
         $jobsProcessed = 0;
         $batchNr = 0;
         $totalStats = new Stats();
-        $stopwatch = new Stopwatch();
-        $stopwatch->start('work');
+        $totalStats->startTimer();
 
-        while ($tooEarlyToStop = (($stopwatch->getEvent('work')->getDuration() / 1E3) < $minRuntime && $jobsLeft > 0)) {
+        while (1) {
             while (count($jobBatch = $this->queue->acquireJobs(min($jobsLeft, $batchSize)))) {
                 $batchNr++;
 
@@ -141,27 +146,31 @@ class Worker
                 $totalStats->add($batchStats);
 
                 $jobsProcessed += count($jobBatch);
-                $jobsLeft -= $jobsProcessed;
+                $jobsLeft = $maxJobs - $jobsProcessed;
 
                 $this->logger->info(sprintf('Finished batch %d - %s', $batchNr, $batchStats->asString()));
             }
 
-            if ($tooEarlyToStop) {
-                $this->logger->warning(sprintf('No new jobs found, recheck after %.2fs because runtime %.2f/%.2fs and %d/%d jobs are left',
-                    $minRuntimeDelay,
-                    $stopwatch->getEvent('work')->getDuration() / 1E3,
-                    $minRuntime,
-                    $jobsLeft,
-                    $maxJobs
-                ));
-
-                usleep(floor($minRuntimeDelay * 1E6));
+            if ($totalStats->getDuration() > $minRuntime || $jobsLeft <= 0) {
+                break;
             }
+
+            $this->logger->info(sprintf('Waiting for new jobs... Recheck after %.2fs because runtime %.2f/%.2fs and %d/%d jobs are left.',
+                $minRuntimeDelay,
+                $totalStats->getDuration(),
+                $minRuntime,
+                $jobsLeft,
+                $maxJobs
+            ));
+
+            usleep(floor($minRuntimeDelay * 1E6));
         }
 
-        $this->logger->info(sprintf("Finished work run after %d batches:\nTook: %.2fs, Peak mem: %.2fMiB\n%s",
+        $totalStats->stopTimer();
+
+        $this->logger->notice(sprintf("Finished work run after %d batches:\nTook: %.2fs, Peak mem: %.2fMiB\n%s",
             $batchNr,
-            $stopwatch->getEvent('work')->getDuration() / 1E3,
+            $totalStats->getDuration(),
             memory_get_peak_usage(true) / 0x100000,
             $totalStats->asString(true)
         ));

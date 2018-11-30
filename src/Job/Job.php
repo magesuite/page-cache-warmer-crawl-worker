@@ -277,7 +277,7 @@ class Job
             'status' => $this->status,
             'status_code' => $this->statusCode,
             'fail_reason' => $this->failReason,
-            'transfer_time' => $this->transferTime
+            'transfer_time' => $this->transferTime,
         ];
     }
 

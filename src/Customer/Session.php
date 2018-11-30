@@ -8,13 +8,11 @@ use Psr\Http\Message\ResponseInterface;
 
 class Session
 {
-    const MAGENTO_VARY_COOKIE = 'X-Magento-Vary';
-
-    /* This is magento's default */
-    const DEFAULT_MAX_AGE = 3600;
+    const VARY_COOKIE_NAME = 'X-Magento-Vary';
+    const SESSION_COOKIE_NAME = 'PHPSESSID';
 
     /**
-     * @var string
+     * @var string|null
      */
     protected $customerGroup;
 
@@ -29,37 +27,19 @@ class Session
     protected $created;
 
     /**
-     * Time of last update/refresh.
-     *
-     * If null then sessions is clean, was never used.
-     *
-     * @var \DateTime|null
-     */
-    protected $updated;
-
-    /**
-     * @var CookieJar
-     */
-    protected $cookies;
-
-    /**
-     * MaxAge in seconds
-     *
-     * @var int
-     */
-    protected $maxAge = self::DEFAULT_MAX_AGE;
-
-    /**
      * @var string
      */
     private $filename;
 
     /**
-     * Sessions is created invalid as it has not yet been used and is "clear".
-     *
+     * @var CookieJar
+     */
+    private $cookies;
+
+    /**
      * @var bool
      */
-    private $isValid = false;
+    private $invalidated = true;
 
     /**
      * @param string $filename
@@ -71,7 +51,6 @@ class Session
     {
         $this->filename = $filename;
         $this->created = new \DateTime();
-        $this->updated = null;
         $this->cookies = new CookieJar(false, $cookies);
         $this->host = $host;
         $this->customerGroup = $customerGroup;
@@ -133,10 +112,8 @@ class Session
     {
         $session = new static($filename, $data['host'], $data['customerGroup'], $data['cookies']);
 
-        $session->isValid = $data['is_valid'];
+        $session->invalidated = $data['is_valid'];
         $session->created = new \DateTime($data['created']);
-        $session->updated = new \DateTime($data['updated']);
-        $session->maxAge = $data['max_age'];
 
         return $session;
     }
@@ -145,9 +122,7 @@ class Session
     {
         return [
             'created' => '@' . $this->created->getTimestamp(),
-            'updated' => '@' . $this->created->getTimestamp(),
-            'max_age' => $this->maxAge,
-            'is_valid' => $this->isValid,
+            'is_valid' => $this->invalidated,
             'host' => $this->host,
             'customerGroup' => $this->customerGroup,
             'cookies' => $this->cookies->toArray(),
@@ -155,9 +130,9 @@ class Session
     }
 
     /**
-     * @return string
+     * @return string|null
      */
-    public function getCustomerGroup(): string
+    public function getCustomerGroup(): ?string
     {
         return $this->customerGroup;
     }
@@ -179,14 +154,6 @@ class Session
     }
 
     /**
-     * @return \DateTime
-     */
-    public function getUpdated(): \DateTime
-    {
-        return $this->updated;
-    }
-
-    /**
      * @return CookieJar
      */
     public function getCookies(): CookieJar
@@ -195,56 +162,108 @@ class Session
     }
 
     /**
+     * Warning - returns true if no session cookie was found too.
+     *
      * @return bool
      */
     private function hasExpired(): bool
     {
-        return $this->getAge() > $this->getMaxAge();
-    }
-
-    /**
-     * @return int
-     */
-    public function getMaxAge(): int
-    {
-        return $this->maxAge;
-    }
-
-    /**
-     * Returns current (now - last update) age in seconds.
-     *
-     * @return int
-     */
-    public function getAge(): int
-    {
-        return time() - $this->updated->getTimestamp();
-    }
-
-    /**
-     * Returns true if the response has magento's vary cookie.
-     *
-     * For this cookie to be present these conditions have to be fullfilled:
-     *  - Session has a customer logged in
-     *  - Response is a cache miss or uncacheable page
-     *  - The page has content that varies for logged in users
-     *
-     * Useful for checking if the login succeeded or if the session is still valid.
-     *
-     * @param ResponseInterface $response
-     * @return bool
-     */
-    public static function doesResponseHaveCustomerVary(ResponseInterface $response): bool
-    {
-        foreach ($response->getHeader('Set-Cookie') as $cookieHeaderValue) {
-            $cookie = SetCookie::fromString($cookieHeaderValue);
-
-            /* Magento sets this cookie's value to "deleted" on log out so let's keep it safe */
-            if ($cookie->getName() === self::MAGENTO_VARY_COOKIE && $cookie->getValue() !== 'deleted') {
-                return true;
-            }
+        if (!($sessionCookie = $this->getSessionCookie())) {
+            return true;
         }
 
-        return false;
+        $expires = $sessionCookie->getExpires();
+
+        if (!$expires) {
+            throw new \Exception(sprintf('Session cookie doesn\'t does not have max-age or expires, cannot determine session validity'));
+        }
+
+        return time() > $sessionCookie->getExpires();
+
+    }
+
+    /**
+     * Warning returns true if no vary hash found.
+     *
+     * @return bool
+     */
+    private function hasVaryHashExpired(): bool
+    {
+        if (!($varyCookie = $this->getVaryCookie())) {
+            return true;
+        }
+
+        $expires = $varyCookie->getExpires();
+
+        if (!$expires) {
+            throw new \Exception(sprintf('Vary cookie doesn\'t does not have max-age or expires, cannot determine login validity'));
+        }
+
+        return time() > $varyCookie->getExpires();
+    }
+
+    /**
+     * @return SetCookie|null
+     */
+    private function getSessionCookie(): ?SetCookie
+    {
+        return $this->cookies->getCookieByName(self::SESSION_COOKIE_NAME);
+    }
+
+    /**
+     * @return int|null
+     */
+    public function getMaxAge(): ?int
+    {
+        return $this->getSessionCookie() ? $this->getSessionCookie()->getMaxAge() : null;
+    }
+
+    /**
+     * @return null|string
+     */
+    public function getSessionId(): ?string
+    {
+        return $this->getSessionCookie() ? $this->getSessionCookie()->getValue() : null;
+    }
+
+    /**
+     * @return SetCookie|null
+     */
+    private function getVaryCookie(): ?SetCookie
+    {
+        if (!($cookie = $this->cookies->getCookieByName(self::VARY_COOKIE_NAME))) {
+            return null;
+        }
+
+        if (strtolower(trim($cookie->getValue())) === 'deleted') {
+            return null;
+        }
+
+        return $cookie;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasVaryHash(): bool
+    {
+        return null !== $this->getVaryCookie();
+    }
+
+    /**
+     * @return null|string
+     */
+    public function getVaryHash(): ?string
+    {
+        return $this->getVaryCookie() ? $this->getVaryCookie()->getValue() : null;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isInitialized(): bool
+    {
+        return null !== $this->getSessionCookie();
     }
 
     /**
@@ -253,28 +272,53 @@ class Session
      */
     public function invalidate()
     {
-        $this->isValid = false;
+        $this->invalidated = false;
         $this->save();
     }
 
     /**
-     * True if sessions has not expired or been forcibly invalidated.
+     * Returns true if:
+     *  - Session has been initialized
+     *  - Has non-expired session cookie
+     *  - Has not been forcibly invalidated
+     *  - Is an anonymous session or vary cookie is not expired
      *
      * @return bool
      */
     public function isValid(): bool
     {
-        return $this->isValid && !$this->hasExpired();
+        return $this->invalidated && !$this->hasExpired() && ($this->isAnonymous() || !$this->hasVaryHashExpired());
+    }
+
+    /**
+     * Clears cookies essentially making the session a clean slate.
+     */
+    public function reset(): void
+    {
+        $this->cookies->clear();
+        $this->invalidated = true;
+
+        /* Reset the created time as the previous one provides no real information after reset */
+        $this->created = new \DateTime();
+    }
+
+    /**
+     * Returns true if session is for guest user - for public cache warming.
+     *
+     * @return bool
+     */
+    public function isAnonymous(): bool
+    {
+        return null === $this->customerGroup;
     }
 
     public function __toString()
     {
-        return sprintf('Sess { customerGroup: %s, host: %s, updated: %s, age: %s, %s }',
-            $this->customerGroup ? $this->customerGroup : 'anon',
+        return sprintf('Sess { host: %s, customerGroup: %s%s %s }',
             $this->host,
-            $this->updated->format('Y.m.d H:i:s'),
-            $this->getAge(),
-            $this->isValid() ? 'VALID' : 'EXPIRED'
+            $this->customerGroup ? $this->customerGroup : 'anon.',
+            $this->isInitialized() ? sprintf(", expires: %s", date('d.m.Y H:i:s', $this->getSessionCookie()->getExpires())) : '',
+            $this->isValid() ? 'VALID' : 'INVALID'
         );
     }
 
