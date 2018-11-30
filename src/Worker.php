@@ -8,8 +8,9 @@ use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\JobExecutor;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\Stats;
 use MageSuite\PageCacheWarmerCrawlWorker\Queue\Queue;
+use MageSuite\PageCacheWarmerCrawlWorker\Throttler\Throttler;
+use MageSuite\PageCacheWarmerCrawlWorker\Throttler\TransferTimeThrottler;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Stopwatch\Stopwatch;
 
 class Worker
 {
@@ -53,6 +54,10 @@ class Worker
          * Accept-encoding is a must if you compress your responses at the backend!
          * Also make sure that your varnish normalizes this header. */
         'warmup_headers' => JobExecutor::DEFAULT_WARMUP_HEADERS,
+
+        /* If false then no throttling is performed. If true then default throttling settings are used.
+         * In case it's an array it's treated as throttling settings. */
+        'throttle' => true,
     ];
 
     /**
@@ -116,10 +121,28 @@ class Worker
         );
     }
 
+    private function createThrottler(array $settings): ?Throttler
+    {
+        if (!$settings['throttle']) {
+            return null;
+        }
+
+        $throttlerSettings = [
+            'target_concurrency' => $settings['concurrency'],
+        ];
+
+        if (is_array($settings['throttle'])) {
+            $throttlerSettings = array_merge($throttlerSettings, $settings['throttle']);
+        }
+
+        return new TransferTimeThrottler($this->logger, $throttlerSettings);
+    }
+
     public function work(array $settings)
     {
         $settings = $this->normalizeSettings($settings);
         $executor = $this->createJobExecutor($settings);
+        $throttler = $this->createThrottler($settings);
 
         $maxJobs = $settings['max_jobs'];
         $batchSize = $settings['batch_size'];
@@ -130,7 +153,7 @@ class Worker
         $jobsLeft = $maxJobs;
         $jobsProcessed = 0;
         $batchNr = 0;
-        $totalStats = new Stats();
+        $totalStats = new Stats('run');
         $totalStats->startTimer();
 
         while (1) {
@@ -139,16 +162,29 @@ class Worker
 
                 $this->logger->debug(sprintf('Starting batch %d, acquired %d jobs, max %d jobs until exit', $batchNr, count($jobBatch), $jobsLeft));
 
-                $executor->execute($jobBatch, $concurrency);
+                $executor->execute(
+                    $jobBatch,
+                    $throttler ? $throttler->getSuggestedConcurrency() : $concurrency,
+                    $throttler ? $throttler->getSuggestedRequestDelay() : 0
+                );
+
                 $this->queue->updateStatus($jobBatch);
 
-                $batchStats = new Stats($jobBatch);
+                $batchStats = new Stats('batch', $jobBatch);
                 $totalStats->add($batchStats);
 
                 $jobsProcessed += count($jobBatch);
                 $jobsLeft = $maxJobs - $jobsProcessed;
 
                 $this->logger->info(sprintf('Finished batch %d - %s', $batchNr, $batchStats->asString()));
+
+                if ($throttler) {
+                    $throttler->processBatchStats($batchStats);
+
+                    if ($throttler->getSuggestedEmergencyPause()) {
+                        sleep($throttler->getSuggestedEmergencyPause());
+                    }
+                }
             }
 
             if ($totalStats->getDuration() > $minRuntime || $jobsLeft <= 0) {

@@ -73,9 +73,11 @@ class Job
     protected $failReason;
 
     /**
-     * Time it took to perform the request
+     * Time it took to perform the request.
      *
-     * @var float
+     * Null if not avaialble.
+     *
+     * @var float|null
      */
     protected $transferTime;
 
@@ -246,9 +248,9 @@ class Job
     }
 
     /**
-     * @return float
+     * @return float|null
      */
-    public function getTransferTime(): float
+    public function getTransferTime(): ?float
     {
         return $this->transferTime;
     }

@@ -77,7 +77,14 @@ class JobExecutor
             'allow_redirects' => false,
             'headers' => $this->extraWarmupHeaders,
             'on_stats' => function (TransferStats $stats) use ($job) {
-                $job->setTransferTime($stats->getTransferTime());
+                if ($stats->hasResponse()) {
+                    /* Get TTFB if avaialble as it's better measure of server load */
+                    if (isset($stats->getHandlerStats()['starttransfer_time'])) {
+                        $job->setTransferTime($stats->getHandlerStats()['starttransfer_time']);
+                    }
+
+                    $job->setTransferTime($stats->getTransferTime());
+                }
             }
         ]);
     }
@@ -94,7 +101,7 @@ class JobExecutor
     /**
      * @param array $jobs List of jobs to execute
      * @param int $concurrentRequests Number of requests made in parallel
-     * @param float $delay Delay between the requests / concurrent batches in seconds
+     * @param float $delay Requested delay between requests
      */
     public function execute(array $jobs, int $concurrentRequests = 1, float $delay = 0.0)
     {
@@ -103,10 +110,6 @@ class JobExecutor
         /** @var $batch Job[] */
         while (!empty($batch = array_slice($jobs, $batchNr * $concurrentRequests, $concurrentRequests))) {
             $this->logger->debug(sprintf('Starting execution of %d jobs concurrently', count($batch)));
-
-            if ($delay !== 0.0) {
-                floor($delay * 1000000.0);
-            }
 
             $promises = array_map([$this, 'sendAsyncWarmupRequest'], $batch);
             $results = Promise\settle($promises)->wait();
@@ -149,6 +152,12 @@ class JobExecutor
                 }
 
                 $this->logger->info(sprintf('Executed: %s', $job));
+            }
+
+            if ($delay !== 0.0) {
+                /* Since we cannot wait between requests when doing them concurrently
+                 * adjust the delay so the total time is correct */
+                floor($delay * 1000000.0 * $concurrentRequests);
             }
 
             $batchNr++;

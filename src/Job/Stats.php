@@ -44,18 +44,54 @@ class Stats
     private $statusCodes = [];
 
     /**
+     * Number of successfully completed job which were cache misses.
+     *
+     * @var int
+     */
+    private $cacheMissTransferCount = 0;
+
+    /**
+     * Sum of transfer times of successfully completed jobs
+     * which were cache misses, so real work was done.
+     *
+     * @var float
+     */
+    private $cacheMissTransferTime = 0;
+
+    /**
+     * Number of requests that resulted in a response.
+     *
+     * @var int
+     */
+    private $totalTransferCount = 0;
+
+    /**
+     * Sum of transfer time of all requests that returned.
+     *
+     * @var float
+     */
+    private $totalTransferTime = 0;
+
+    /**
      * @var Stopwatch
      */
     private $stopwatch;
+    /**
+     * @var string
+     */
+    private $name;
 
     /**
+     * @param string $name Descriptive name of this stats
      * @param array $jobs
      */
-    public function __construct(array $jobs = [])
+    public function __construct(string $name, array $jobs = [])
     {
         foreach ($jobs as $job) {
             $this->addForJob($job);
         }
+
+        $this->name = $name;
     }
 
     public function startTimer()
@@ -108,11 +144,18 @@ class Stats
     {
         $this->total++;
 
+
+
         if ($job->isCompleted()) {
             $this->completed++;
 
             if ($job->wasAlreadyWarm()) {
                 $this->alreadyWarm++;
+            } elseif ($job->getTransferTime() !== 0.0) {
+                /* Only store transfer time for successfull cache misses,
+                 * the rest is useless for assesing server load. */
+                $this->cacheMissTransferTime += $job->getTransferTime();
+                $this->cacheMissTransferCount++;
             }
         } elseif ($job->isFailed()) {
             $this->failed++;
@@ -130,6 +173,10 @@ class Stats
         $this->pending += $stats->pending;
         $this->failed += $stats->failed;
         $this->alreadyWarm += $stats->alreadyWarm;
+        $this->totalTransferCount += $stats->totalTransferCount;
+        $this->totalTransferTime += $stats->totalTransferTime;
+        $this->cacheMissTransferCount += $stats->cacheMissTransferCount;
+        $this->cacheMissTransferTime += $stats->cacheMissTransferTime;
 
         foreach ($stats->statusCodes as $code => $count) {
             $this->incrementStatusCode($code, $count);
@@ -140,34 +187,76 @@ class Stats
         }
     }
 
-    private static function formatStatsArray(array $stats): string
+    private static function formatStatsArray(array $stats, int $padding = 0): string
     {
-        return implode(', ', array_map(function($name, $value) {
-            return sprintf('%s: %s', ucfirst($name), $value);
+        return implode("\n", array_map(function($name, $value) use ($padding) {
+            return sprintf("%s* %s: %s", str_repeat(' ', $padding), ucfirst($name), $value);
         }, array_keys($stats), array_values($stats)));
     }
 
     public function asString(bool $extended = false): string
     {
-        $str = self::formatStatsArray([
+        $str = sprintf("%s stats\n", ucfirst($this->name));
+
+        $str .= self::formatStatsArray([
             'total' => $this->total,
             'pending' => $this->pending,
             'completed' => $this->completed,
             'failed' => $this->failed,
-            'already warm' => $this->alreadyWarm
-        ]);
+            'already warm (cache-hit)' => $this->alreadyWarm,
+            'average transfer time' => $this->getAverageTransferTime(),
+            'average transfer time (cache-misses)' => $this->getAverageCacheMissTransferTime(),
+        ], 2);
 
         if ($extended) {
             if (!empty($this->failReasons)) {
-                $str .= "\nFail reasons - " . self::formatStatsArray($this->failReasons);
+                $str .= "\n  Fail reasons\n" . self::formatStatsArray($this->failReasons, 4);
             }
 
             if (!empty($this->statusCodes)) {
-                $str .= "\nStatus codes - " . self::formatStatsArray($this->statusCodes);
+                $str .= "\n  Status codes\n" . self::formatStatsArray($this->statusCodes, 4);
             }
         }
 
         return $str;
+    }
+
+    public function getFailReasonCount(string $failReason): int
+    {
+        if (!isset($this->failReasons[$failReason])) {
+            return 0;
+        }
+
+        return $this->failReasons[$failReason];
+    }
+
+    /**
+     * Returns average transfer time for successfully completed jobs
+     * that resulted in a cache miss (performed real warmup).
+     *
+     * @return float
+     */
+    public function getAverageCacheMissTransferTime(): float
+    {
+        if ($this->cacheMissTransferCount === 0) {
+            return 0;
+        }
+
+        return $this->cacheMissTransferTime / $this->cacheMissTransferCount;
+    }
+
+    /**
+     * Returns average transfer time for all requests that have returned.
+     *
+     * @return float
+     */
+    public function getAverageTransferTime(): float
+    {
+        if ($this->totalTransferCount === 0) {
+            return 0;
+        }
+
+        return $this->totalTransferTime / $this->totalTransferCount;
     }
 
     public function __toString()
