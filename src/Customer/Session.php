@@ -9,7 +9,9 @@ use Psr\Http\Message\ResponseInterface;
 class Session
 {
     const MAGENTO_VARY_COOKIE = 'X-Magento-Vary';
-    const DEFAULT_MAX_VALIDITY = '45 minutes';
+
+    /* This is magento's default */
+    const DEFAULT_MAX_AGE = 3600;
 
     /**
      * @var string
@@ -27,9 +29,25 @@ class Session
     protected $created;
 
     /**
+     * Time of last update/refresh.
+     *
+     * If null then sessions is clean, was never used.
+     *
+     * @var \DateTime|null
+     */
+    protected $updated;
+
+    /**
      * @var CookieJar
      */
     protected $cookies;
+
+    /**
+     * MaxAge in seconds
+     *
+     * @var int
+     */
+    protected $maxAge = self::DEFAULT_MAX_AGE;
 
     /**
      * @var string
@@ -37,9 +55,11 @@ class Session
     private $filename;
 
     /**
+     * Sessions is created invalid as it has not yet been used and is "clear".
+     *
      * @var bool
      */
-    private $isValid = true;
+    private $isValid = false;
 
     /**
      * @param string $filename
@@ -51,6 +71,7 @@ class Session
     {
         $this->filename = $filename;
         $this->created = new \DateTime();
+        $this->updated = null;
         $this->cookies = new CookieJar(false, $cookies);
         $this->host = $host;
         $this->customerGroup = $customerGroup;
@@ -114,6 +135,8 @@ class Session
 
         $session->isValid = $data['is_valid'];
         $session->created = new \DateTime($data['created']);
+        $session->updated = new \DateTime($data['updated']);
+        $session->maxAge = $data['max_age'];
 
         return $session;
     }
@@ -122,6 +145,8 @@ class Session
     {
         return [
             'created' => '@' . $this->created->getTimestamp(),
+            'updated' => '@' . $this->created->getTimestamp(),
+            'max_age' => $this->maxAge,
             'is_valid' => $this->isValid,
             'host' => $this->host,
             'customerGroup' => $this->customerGroup,
@@ -154,6 +179,14 @@ class Session
     }
 
     /**
+     * @return \DateTime
+     */
+    public function getUpdated(): \DateTime
+    {
+        return $this->updated;
+    }
+
+    /**
      * @return CookieJar
      */
     public function getCookies(): CookieJar
@@ -162,25 +195,45 @@ class Session
     }
 
     /**
-     * @param string $timePeriodSpecifier
      * @return bool
      */
-    private function isOlderThan(string $timePeriodSpecifier): bool
+    private function hasExpired(): bool
     {
-        $threshold = new \DateTime();
-        $threshold->modify('-' . $timePeriodSpecifier);
-
-        return $this->created < $threshold;
+        return $this->getAge() > $this->getMaxAge();
     }
 
     /**
-     * Returns true if the response indicates a logged in user.
+     * @return int
+     */
+    public function getMaxAge(): int
+    {
+        return $this->maxAge;
+    }
+
+    /**
+     * Returns current (now - last update) age in seconds.
+     *
+     * @return int
+     */
+    public function getAge(): int
+    {
+        return time() - $this->updated->getTimestamp();
+    }
+
+    /**
+     * Returns true if the response has magento's vary cookie.
+     *
+     * For this cookie to be present these conditions have to be fullfilled:
+     *  - Session has a customer logged in
+     *  - Response is a cache miss or uncacheable page
+     *  - The page has content that varies for logged in users
+     *
      * Useful for checking if the login succeeded or if the session is still valid.
      *
      * @param ResponseInterface $response
      * @return bool
      */
-    public static function isResponseLoggedIn(ResponseInterface $response): bool
+    public static function doesResponseHaveCustomerVary(ResponseInterface $response): bool
     {
         foreach ($response->getHeader('Set-Cookie') as $cookieHeaderValue) {
             $cookie = SetCookie::fromString($cookieHeaderValue);
@@ -204,18 +257,24 @@ class Session
         $this->save();
     }
 
-    public function isValid()
+    /**
+     * True if sessions has not expired or been forcibly invalidated.
+     *
+     * @return bool
+     */
+    public function isValid(): bool
     {
-        return $this->isValid && !$this->isOlderThan(self::DEFAULT_MAX_VALIDITY);
+        return $this->isValid && !$this->hasExpired();
     }
 
     public function __toString()
     {
-        return sprintf('Sess { customerGroup: %s, host: %s, created: %s, %s }',
+        return sprintf('Sess { customerGroup: %s, host: %s, updated: %s, age: %s, %s }',
             $this->customerGroup ? $this->customerGroup : 'anon',
             $this->host,
-            $this->created->format('Y.m.d H:i:s'),
-            $this->isValid() ? 'VALID' : 'INVALIDATED'
+            $this->updated->format('Y.m.d H:i:s'),
+            $this->getAge(),
+            $this->isValid() ? 'VALID' : 'EXPIRED'
         );
     }
 

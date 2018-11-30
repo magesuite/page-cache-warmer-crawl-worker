@@ -143,7 +143,7 @@ class SessionProvider
             throw new \RuntimeException(sprintf('Unexpected status code received for log in: %d', $response->getStatusCode()));
         }
 
-        if (!$session::isResponseLoggedIn($response)) {
+        if (!$session::doesResponseHaveCustomerVary($response)) {
             throw new \RuntimeException(sprintf('Did not log in successfully as customer group %s at host %s, no vary cookie found',
                 $session->getCustomerGroup(),
                 $session->getHost()

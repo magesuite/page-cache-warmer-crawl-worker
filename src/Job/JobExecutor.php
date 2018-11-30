@@ -134,7 +134,7 @@ class JobExecutor
                     } else {
                         $batch[$jobNr]->markFailed(Job::FAILED_REASON_INVALID_CODE);
                     }
-                } elseif ($job->requiresLogin() && !Session::isResponseLoggedIn($response)) {
+                } elseif ($job->requiresLogin() && !Session::doesResponseHaveCustomerVary($response)) {
                     $job->markFailed(Job::FAILED_REASON_SESSION_EXPIRED, $response->getStatusCode());
                     $job->getSession()->invalidate();
                 } else {
