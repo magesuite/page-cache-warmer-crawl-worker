@@ -26,7 +26,7 @@ use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
 class DatabaseQueue implements Queue
 {
     const JOB_TABLE = 'cache_warmup_queue';
-    const RETRY_THRESHOLD = '20 minutes';
+    const DEFAULT_RETRY_THRESHOLD = '20 minutes';
     
     /**
      * @var Connection
@@ -34,11 +34,19 @@ class DatabaseQueue implements Queue
     protected $connection;
 
     /**
-     * @param array $connectionParams Doctrine DBAL connection params
+     * @var string
      */
-    public function __construct(array $connectionParams)
+    private $retryThreshold;
+
+    /**
+     * @param array $connectionParams Doctrine DBAL connection params
+     * @param string $retryThreshold
+     * @throws \Doctrine\DBAL\DBALException
+     */
+    public function __construct(array $connectionParams, string $retryThreshold = self::DEFAULT_RETRY_THRESHOLD)
     {
         $this->connection = DriverManager::getConnection($connectionParams);
+        $this->retryThreshold = $retryThreshold;
     }
 
     /**
@@ -125,7 +133,7 @@ class DatabaseQueue implements Queue
             $count
         ));
         
-        $statement->bindValue('threshold', $this->createDatabaseDate(self::RETRY_THRESHOLD), 'datetime');
+        $statement->bindValue('threshold', $this->createDatabaseDate($this->retryThreshold), 'datetime');
         
         return $statement;
     }
@@ -204,6 +212,10 @@ class DatabaseQueue implements Queue
         $finishedJobs = array_filter($jobs, function (Job $job) {
             return $job->isCompleted();
         });
+
+        if (empty($finishedJobs)) {
+            return;
+        }
 
         $this->getFinishJobsStatement($this->getJobIds($finishedJobs))->execute();
     }

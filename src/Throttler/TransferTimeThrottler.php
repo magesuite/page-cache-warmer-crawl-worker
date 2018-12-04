@@ -4,6 +4,7 @@ namespace MageSuite\PageCacheWarmerCrawlWorker\Throttler;
 
 use MageSuite\PageCacheWarmerCrawlWorker\Job\Job;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\Stats;
+use Psr\Log\LoggerInterface;
 
 class TransferTimeThrottler extends AbstractThrottler implements Throttler
 {
@@ -15,12 +16,22 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
     /**
      * @var int
      */
-    private $concurrency = 0;
+    private $concurrency = 1;
 
     /**
      * @var int
      */
     private $emergencyPause = 0;
+
+    /**
+     * {@inheritdoc}
+     */
+    public function __construct(LoggerInterface $logger, array $settings = [])
+    {
+        parent::__construct($logger, $settings);
+
+        $this->concurrency = $this->getSetting('target_concurrency');
+    }
 
     /**
      * {@inheritdoc}
@@ -31,9 +42,9 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
             /* TTFB should be kept below this value or throttling starts */
             'target_ttfb' => 10.0,
             /* Request concurrency */
-            'target_concurrency' => 10,
+            'target_concurrency' => 1,
             /* How much to multiply slowdown delay */
-            'slowdown_delay_multiplier' => 1.0,
+            'slowdown_delay_multiplier' => 1.2,
             /* How much to delay execution per request fail */
             'fail_delay' => 10,
         ];
@@ -41,7 +52,7 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
 
     private function formatRelativeSlowdown(float $relativeSlowdown): string
     {
-        return sprintf('%s%s% %s',
+        return sprintf('%s%s%% %s',
             $relativeSlowdown > 0 ? '+' : '-',
             floor(abs($relativeSlowdown) * 100.0),
             $relativeSlowdown > 0 ? 'slower' : 'faster'
@@ -53,11 +64,18 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
      */
     public function processBatchStats(Stats $stats)
     {
+        if ($stats->getCacheMissTransferCount() === 0) {
+            /* Do not adjust paramteres if no work was done */
+            return;
+        }
+
         $slowdown = $stats->getAverageCacheMissTransferTime() - $this->getSetting('target_ttfb');
         $relativeSlowdown = $slowdown / $this->getSetting('target_ttfb');
 
         if ($relativeSlowdown > 0.0) {
-            $this->logger->warning(sprintf('Slowdown: %s %.2fs - throttling...', $this->formatRelativeSlowdown($relativeSlowdown), $slowdown));
+            $this->logger->warningEvent('THROTTLING-START', [
+                'slowdown' => $this->formatRelativeSlowdown($relativeSlowdown),
+            ]);
 
             $suggestedConcurrency = max(1, floor($this->concurrency / ceil($relativeSlowdown)));
 
@@ -69,20 +87,29 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
 
             if ($suggestedConcurrency < $this->concurrency) {
                 $this->concurrency = $suggestedConcurrency;
-                $this->logger->warning(sprintf('Throttle by decreasing concurrency to %d', $this->concurrency));
+
+                $this->logger->warningEvent('DECREASE-CONCURRENCY', [
+                    'new_concurrency' => $this->concurrency,
+                    'target_concurrency' => $this->getSetting('target_concurrency'),
+                ]);
             }
 
             $slowdownLeftAfterConcurrencyDecrease = $relativeSlowdown - $relativeConcurrencyDecrease;
 
-            if ($slowdownLeftAfterConcurrencyDecrease < 0.0) {
-                $this->requestDelay = abs($slowdownLeftAfterConcurrencyDecrease) * $this->getSetting('slowdown_delay_multiplier');
-                $this->logger->warning(sprintf('Throttle by adding request delay %.2fs', $this->requestDelay));
+            if ($slowdownLeftAfterConcurrencyDecrease > 0.0) {
+                $this->requestDelay = abs($slowdownLeftAfterConcurrencyDecrease) * $this->getSetting('target_ttfb') * $this->getSetting('slowdown_delay_multiplier');
+
+                $this->logger->warningEvent('ADD-REQUEST-DELAY', [
+                    'new_request_delay' => $this->requestDelay,
+                ]);
             }
         } else {
             $this->concurrency = $this->getSetting('target_concurrency');
             $this->requestDelay = 0;
 
-            $this->logger->debug(sprintf('Slowdown: %s %.2fs', $this->formatRelativeSlowdown($relativeSlowdown), $slowdown));
+            $this->logger->warningEvent('NO-THROTTLING', [
+                'slowdown' => $this->formatRelativeSlowdown($relativeSlowdown)
+            ]);
         }
 
         $failCount =
@@ -92,7 +119,11 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
 
         if ($failCount > 0) {
             $this->emergencyPause = $this->getSetting('fail_delay') * $failCount;
-            $this->logger->warning(sprintf('Got %d fails, implementing emergency pause of %.2fs', $this->emergencyPause));
+
+            $this->logger->alertEvent('EMERGENCY-PAUSE', [
+                'request_failure_count' => $failCount,
+                'pause_duration' => $this->emergencyPause
+            ]);
         } else {
             $this->emergencyPause = 0;
         }

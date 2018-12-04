@@ -3,6 +3,7 @@
 namespace MageSuite\PageCacheWarmerCrawlWorker\Customer;
 
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
+use MageSuite\PageCacheWarmerCrawlWorker\Logging\EventFormattingLogger;
 use Psr\Log\LoggerInterface;
 use GuzzleHttp\Client;
 
@@ -18,7 +19,7 @@ class SessionProvider
     protected $client;
 
     /**
-     * @var LoggerInterface
+     * @var EventFormattingLogger
      */
     protected $logger;
 
@@ -46,7 +47,7 @@ class SessionProvider
         int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT,
         string $storageDir = null
     ) {
-        $this->logger = $logger;
+        $this->logger = new EventFormattingLogger($logger, 'Sessions');
         $this->client = $clientFactory->createClient($requestTimeout);
         $this->storageDir = $storageDir;
 
@@ -114,7 +115,7 @@ class SessionProvider
 
     private function initialize(Session $session)
     {
-        $this->logger->debug(sprintf('Authorizing session: %s', $session));
+        $this->logger->debugEvent('AUTH-START', $session->getBasicDataArray());
 
         /* Clear old cookies just to be sure. */
         $session->reset();
@@ -162,11 +163,11 @@ class SessionProvider
         $filename = $this->getSessionFilename($host, $customerGroup);
         $session = new Session($filename, $host, $customerGroup);
 
-        $this->logger->debug(sprintf('Created: %s', (string)$session));
+        $this->logger->debugEvent('CREATED', $session->getBasicDataArray());
 
         $this->initialize($session);
 
-        $this->logger->debug(sprintf('Initialized: %s', (string)$session));
+        $this->logger->debugEvent('INITIALIZED', $session->getBasicDataArray());
 
         /* Force save session so it might be reused at once. */
         $session->save();
@@ -187,7 +188,7 @@ class SessionProvider
 
         $session = Session::load($this->getSessionFilename($host, $customerGroup));
 
-        $this->logger->debug(sprintf('Loaded: %s', (string)$session));
+        $this->logger->debugEvent('LOADED', $session->getBasicDataArray());
 
         if (!$session->isValid()) {
             return $this->createSession($host, $customerGroup);

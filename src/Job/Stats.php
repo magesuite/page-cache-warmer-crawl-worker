@@ -187,40 +187,6 @@ class Stats
         }
     }
 
-    private static function formatStatsArray(array $stats, int $padding = 0): string
-    {
-        return implode("\n", array_map(function($name, $value) use ($padding) {
-            return sprintf("%s* %s: %s", str_repeat(' ', $padding), ucfirst($name), $value);
-        }, array_keys($stats), array_values($stats)));
-    }
-
-    public function asString(bool $extended = false): string
-    {
-        $str = sprintf("%s stats\n", ucfirst($this->name));
-
-        $str .= self::formatStatsArray([
-            'total' => $this->total,
-            'pending' => $this->pending,
-            'completed' => $this->completed,
-            'failed' => $this->failed,
-            'already warm (cache-hit)' => $this->alreadyWarm,
-            'average transfer time' => $this->getAverageTransferTime(),
-            'average transfer time (cache-misses)' => $this->getAverageCacheMissTransferTime(),
-        ], 2);
-
-        if ($extended) {
-            if (!empty($this->failReasons)) {
-                $str .= "\n  Fail reasons\n" . self::formatStatsArray($this->failReasons, 4);
-            }
-
-            if (!empty($this->statusCodes)) {
-                $str .= "\n  Status codes\n" . self::formatStatsArray($this->statusCodes, 4);
-            }
-        }
-
-        return $str;
-    }
-
     public function getFailReasonCount(string $failReason): int
     {
         if (!isset($this->failReasons[$failReason])) {
@@ -246,6 +212,14 @@ class Stats
     }
 
     /**
+     * @return int
+     */
+    public function getCacheMissTransferCount(): int
+    {
+        return $this->cacheMissTransferCount;
+    }
+
+    /**
      * Returns average transfer time for all requests that have returned.
      *
      * @return float
@@ -259,8 +233,16 @@ class Stats
         return $this->totalTransferTime / $this->totalTransferCount;
     }
 
-    public function __toString()
+    public function getSummaryArray(): array
     {
-        return $this->asString();
+        return [
+            'totle' => $this->total,
+            'pending' => $this->pending,
+            'completed' => $this->completed,
+            'failed' => $this->failed,
+            'already_warm' => $this->alreadyWarm,
+            'average_transfer_time' => $this->getAverageTransferTime(),
+            'average_cache_miss_transfer_time' => $this->getAverageCacheMissTransferTime()
+        ];
     }
 }

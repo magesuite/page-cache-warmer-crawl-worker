@@ -7,6 +7,7 @@ use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\JobExecutor;
 use MageSuite\PageCacheWarmerCrawlWorker\Job\Stats;
+use MageSuite\PageCacheWarmerCrawlWorker\Logging\EventFormattingLogger;
 use MageSuite\PageCacheWarmerCrawlWorker\Queue\Queue;
 use MageSuite\PageCacheWarmerCrawlWorker\Throttler\Throttler;
 use MageSuite\PageCacheWarmerCrawlWorker\Throttler\TransferTimeThrottler;
@@ -82,7 +83,7 @@ class Worker
     ) {
         $this->credentialsProvider = $credentialsProvider;
         $this->queue = $queue;
-        $this->logger = $logger;
+        $this->logger = new EventFormattingLogger($logger, 'Worker');
     }
 
     private function normalizeSettings(array $settings)
@@ -150,6 +151,10 @@ class Worker
         $minRuntime = $settings['min_runtime'];
         $minRuntimeDelay = $settings['min_runtime_delay'];
 
+        if ($concurrency < 1) {
+            throw new \DomainException(sprintf('Conncurrency is %d and cannot be lower than 1', $concurrency));
+        }
+
         $jobsLeft = $maxJobs;
         $jobsProcessed = 0;
         $batchNr = 0;
@@ -160,7 +165,11 @@ class Worker
             while (count($jobBatch = $this->queue->acquireJobs(min($jobsLeft, $batchSize)))) {
                 $batchNr++;
 
-                $this->logger->debug(sprintf('Starting batch %d, acquired %d jobs, max %d jobs until exit', $batchNr, count($jobBatch), $jobsLeft));
+                $this->logger->debugEvent('BATCH-START', [
+                    'batch_nr' => $batchNr,
+                    'jobs_acquired' => count($jobBatch),
+                    'jobs_left_max' => $jobsLeft
+                ]);
 
                 $executor->execute(
                     $jobBatch,
@@ -176,7 +185,9 @@ class Worker
                 $jobsProcessed += count($jobBatch);
                 $jobsLeft = $maxJobs - $jobsProcessed;
 
-                $this->logger->info(sprintf('Finished batch %d - %s', $batchNr, $batchStats->asString()));
+                $this->logger->infoEvent('BATCH-FINISHED', array_merge([
+                    'batch_nr' => $batchNr,
+                ], $batchStats->getSummaryArray()));
 
                 if ($throttler) {
                     $throttler->processBatchStats($batchStats);
@@ -191,24 +202,23 @@ class Worker
                 break;
             }
 
-            $this->logger->info(sprintf('Waiting for new jobs... Recheck after %.2fs because runtime %.2f/%.2fs and %d/%d jobs are left.',
-                $minRuntimeDelay,
-                $totalStats->getDuration(),
-                $minRuntime,
-                $jobsLeft,
-                $maxJobs
-            ));
+            $this->logger->infoEvent('WAITING-FOR-JOBS', [
+                'delay_for' => $minRuntimeDelay,
+                'runtime' => intval($totalStats->getDuration()),
+                'runtime_min' => $minRuntime,
+                'jobs_left' => $jobsLeft,
+                'max_jobs' => $maxJobs
+            ]);
 
             usleep(floor($minRuntimeDelay * 1E6));
         }
 
         $totalStats->stopTimer();
 
-        $this->logger->notice(sprintf("Finished work run after %d batches:\nTook: %.2fs, Peak mem: %.2fMiB\n%s",
-            $batchNr,
-            $totalStats->getDuration(),
-            memory_get_peak_usage(true) / 0x100000,
-            $totalStats->asString(true)
-        ));
+        $this->logger->infoEvent('WORK-FINISHED', array_merge([
+            'batch_count' => $batchNr,
+            'runtime' => $totalStats->getDuration(),
+            'memory_usage_peak' => memory_get_peak_usage(true) / 0x100000,
+        ], $totalStats->getSummaryArray()));
     }
 }

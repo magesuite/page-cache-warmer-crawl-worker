@@ -274,8 +274,9 @@ class Job
     public function toArray(): array
     {
         return [
-            'url' => $this->url,
+            'id' => $this->id,
             'customer_group' => $this->customerGroup,
+            'url' => $this->url,
             'status' => $this->status,
             'status_code' => $this->statusCode,
             'fail_reason' => $this->failReason,
@@ -305,18 +306,5 @@ class Job
     public function wasAlreadyWarm(): ?bool
     {
         return $this->wasAlreadyWarm;
-    }
-
-    public function __toString()
-    {
-        return sprintf('Job { id: %s, url: %s, customerGroup: %s, status: %s%s%s%s }',
-            $this->id,
-            $this->url,
-            $this->customerGroup ? $this->customerGroup : 'anon',
-            $this->status,
-            $this->isFailed() ? sprintf(', failReason: %s', $this->failReason) : '',
-            $this->transferTime ? sprintf(', took: %.2fs', $this->transferTime) : '',
-            null !== $this->wasAlreadyWarm ? sprintf(', wasAlreadyWarm: %s', $this->wasAlreadyWarm ? 'yes' : 'no') : ''
-        );
     }
 }

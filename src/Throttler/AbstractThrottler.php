@@ -2,12 +2,13 @@
 
 namespace MageSuite\PageCacheWarmerCrawlWorker\Throttler;
 
+use MageSuite\PageCacheWarmerCrawlWorker\Logging\EventFormattingLogger;
 use Psr\Log\LoggerInterface;
 
 abstract class AbstractThrottler implements Throttler
 {
     /**
-     * @var LoggerInterface
+     * @var EventFormattingLogger
      */
     protected $logger;
 
@@ -22,7 +23,7 @@ abstract class AbstractThrottler implements Throttler
      */
     public function __construct(LoggerInterface $logger, array $settings = [])
     {
-        $this->logger = $logger;
+        $this->logger = new EventFormattingLogger($logger, 'Throttler');
         $this->config = $this->resolveConfig($settings);
     }
 
@@ -51,7 +52,7 @@ abstract class AbstractThrottler implements Throttler
      */
     protected function getSetting(string $name)
     {
-        if (!array_keys($this->config, $name)) {
+        if (!array_key_exists($name, $this->config)) {
             throw new \InvalidArgumentException(sprintf('Setting %s does not exist', $name));
         }
 

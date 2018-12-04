@@ -312,14 +312,15 @@ class Session
         return null === $this->customerGroup;
     }
 
-    public function __toString()
+    public function getBasicDataArray(): array
     {
-        return sprintf('Sess { host: %s, customerGroup: %s%s %s }',
-            $this->host,
-            $this->customerGroup ? $this->customerGroup : 'anon.',
-            $this->isInitialized() ? sprintf(", expires: %s", date('d.m.Y H:i:s', $this->getSessionCookie()->getExpires())) : '',
-            $this->isValid() ? 'VALID' : 'INVALID'
-        );
+        return [
+            'host' => $this->host,
+            'customer_group' => $this->customerGroup,
+            'expires_at' => $this->isInitialized() ? new \DateTime('@' . $this->getSessionCookie()->getExpires()) : null,
+            'is_initialized' => $this->isInitialized(),
+            'is_valid' => $this->isValid()
+        ];
     }
 
     public function __destruct()

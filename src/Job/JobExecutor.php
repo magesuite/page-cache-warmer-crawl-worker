@@ -10,6 +10,7 @@ use GuzzleHttp\TransferStats;
 use GuzzleHttp\Promise;
 use MageSuite\PageCacheWarmerCrawlWorker\Http\ClientFactory;
 use MageSuite\PageCacheWarmerCrawlWorker\Customer\SessionProvider;
+use MageSuite\PageCacheWarmerCrawlWorker\Logging\EventFormattingLogger;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Http\Message\RequestInterface;
@@ -29,7 +30,7 @@ class JobExecutor
     protected $client;
 
     /**
-     * @var LoggerInterface
+     * @var EventFormattingLogger
      */
     protected $logger;
 
@@ -56,7 +57,7 @@ class JobExecutor
         int $requestTimeout = ClientFactory::DEFAULT_TIMEOUT,
         array $extraWarmupHeaders = self::DEFAULT_WARMUP_HEADERS
     ) {
-        $this->logger = $logger;
+        $this->logger = new EventFormattingLogger($logger, 'Executor');
         $this->client = $clientFactory->createClient($requestTimeout);
         $this->sessions = $sessions;
         $this->extraWarmupHeaders = $extraWarmupHeaders;
@@ -109,7 +110,9 @@ class JobExecutor
 
         /** @var $batch Job[] */
         while (!empty($batch = array_slice($jobs, $batchNr * $concurrentRequests, $concurrentRequests))) {
-            $this->logger->debug(sprintf('Starting execution of %d jobs concurrently', count($batch)));
+            $this->logger->debugEvent('ASYNC-REQUEST-BATCH-START', [
+                'concurrent_requests' => count($batch),
+            ]);
 
             $promises = array_map([$this, 'sendAsyncWarmupRequest'], $batch);
             $results = Promise\settle($promises)->wait();
@@ -151,7 +154,7 @@ class JobExecutor
                     $job->markCompleted($response->getStatusCode(), $this->isCacheHit($response));
                 }
 
-                $this->logger->info(sprintf('Executed: %s', $job));
+                $this->logger->debugEvent('EXECUTED', $job->toArray());
             }
 
             if ($delay !== 0.0) {
