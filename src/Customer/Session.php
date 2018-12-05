@@ -19,6 +19,11 @@ class Session
     /**
      * @var string
      */
+    protected $scheme;
+
+    /**
+     * @var string
+     */
     protected $host;
 
     /**
@@ -43,15 +48,17 @@ class Session
 
     /**
      * @param string $filename
+     * @param string $scheme
      * @param string $host
      * @param string|null $customerGroup
      * @param array $cookies
      */
-    public function __construct(string $filename, string $host, string $customerGroup = null, array $cookies = [])
+    public function __construct(string $filename, string $scheme, string $host, string $customerGroup = null, array $cookies = [])
     {
         $this->filename = $filename;
         $this->created = new \DateTime();
         $this->cookies = new CookieJar(false, $cookies);
+        $this->scheme = $scheme;
         $this->host = $host;
         $this->customerGroup = $customerGroup;
     }
@@ -111,7 +118,7 @@ class Session
 
     public static function createFromArray(string $filename, array $data): Session
     {
-        $session = new static($filename, $data['host'], $data['customerGroup'], $data['cookies']);
+        $session = new static($filename, $data['scheme'], $data['host'], $data['customerGroup'], $data['cookies']);
 
         $session->invalidated = $data['is_valid'];
         $session->created = new \DateTime($data['created']);
@@ -123,6 +130,7 @@ class Session
     {
         return [
             'created' => '@' . $this->created->getTimestamp(),
+            'scheme' => $this->scheme,
             'is_valid' => $this->invalidated,
             'host' => $this->host,
             'customerGroup' => $this->customerGroup,
@@ -136,6 +144,14 @@ class Session
     public function getCustomerGroup(): ?string
     {
         return $this->customerGroup;
+    }
+
+    /**
+     * @return string
+     */
+    public function getScheme(): string
+    {
+        return $this->scheme;
     }
 
     /**
@@ -316,7 +332,7 @@ class Session
     public function getBasicDataArray(): array
     {
         return [
-            'host' => $this->host,
+            'base_uri' => $this->scheme . '://' . $this->host,
             'customer_group' => $this->customerGroup,
             'expires_at' => $this->isInitialized() ? new \DateTime('@' . $this->getSessionCookie()->getExpires()) : null,
             'is_initialized' => $this->isInitialized(),

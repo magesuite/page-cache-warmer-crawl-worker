@@ -70,7 +70,13 @@ class JobExecutor
 
     protected function sendAsyncWarmupRequest(Job $job): Promise\PromiseInterface
     {
-        $job->setSession($this->sessions->getSession($job->getUrlHost(), $job->getCustomerGroup()));
+        $job->setSession(
+            $this->sessions->getSession(
+                $job->getUrlScheme(),
+                $job->getUrlHost(),
+                $job->getCustomerGroup()
+            )
+        );
 
         return $this->client->sendAsync($this->createWarmupRequest($job), [
             'cookies' => $job->getSession()->getCookies(),

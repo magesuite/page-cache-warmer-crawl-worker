@@ -68,27 +68,31 @@ class SessionProvider
         $this->credentials = $credentials;
     }
 
-    private function getSessionFilename(string $host, string $customerGroup = null)
+    private function getSessionFilename(string $scheme, string $host, string $customerGroup = null)
     {
-        return $this->storageDir . '/' . $host . '-' . (null !== $customerGroup ? 'cg-' . $customerGroup : 'anon') . '.json';
+        return $this->storageDir . '/' . $scheme . '-' . $host . '-' . (null !== $customerGroup ? 'cg-' . $customerGroup : 'anon') . '.json';
     }
 
-    private function hasSession(string $host, string $customerGroup = null): bool
+    private function hasSession(string $scheme, string $host, string $customerGroup = null): bool
     {
-        return file_exists($this->getSessionFilename($host, $customerGroup));
+        return file_exists($this->getSessionFilename($scheme, $host, $customerGroup));
     }
 
-    private function deleteSession(string $host, string $customerGroup = null)
+    private function deleteSession(string $scheme, string $host, string $customerGroup = null)
     {
-       if ($this->hasSession($host, $customerGroup)) {
-           unlink($this->getSessionFilename($host, $customerGroup));
+       if ($this->hasSession($scheme, $host, $customerGroup)) {
+           unlink($this->getSessionFilename($scheme, $host, $customerGroup));
        }
     }
 
     private function createUrl(Session $session, string $path): string
     {
         /* TODO: Infer the scheme somehow? */
-        return sprintf('http://%s/%s', $session->getHost(), ltrim($path, '/'));
+        return sprintf('%s://%s/%s',
+            $session->getScheme(),
+            $session->getHost(),
+            ltrim($path, '/'
+        ));
     }
 
     private function getFormKey(Session $session): string
@@ -152,16 +156,16 @@ class SessionProvider
         }
 
         if (!$session->isValid()) {
-            throw new \RuntimeException(sprintf('Could not authorize session: %s', (string)$session));
+            throw new \RuntimeException(sprintf('Could not authorize session: %s (%s)', $session->getHost(), $session->getCustomerGroup()));
         }
 
         return $session;
     }
 
-    private function createSession(string $host, string $customerGroup = null): Session
+    private function createSession(string $scheme, string $host, string $customerGroup = null): Session
     {
-        $filename = $this->getSessionFilename($host, $customerGroup);
-        $session = new Session($filename, $host, $customerGroup);
+        $filename = $this->getSessionFilename($scheme, $host, $customerGroup);
+        $session = new Session($filename, $scheme, $host, $customerGroup);
 
         $this->logger->debugEvent('CREATED', $session->getBasicDataArray());
 
@@ -176,22 +180,23 @@ class SessionProvider
     }
 
     /**
+     * @param string $scheme
      * @param string $host Shop hostname
      * @param string|null $customerGroup If null then public/anonymous session is returned
      * @return Session
      */
-    public function getSession(string $host, string $customerGroup = null)
+    public function getSession(string $scheme, string $host, string $customerGroup = null)
     {
-        if (!$this->hasSession($host, $customerGroup)) {
-            return $this->createSession($host, $customerGroup);
+        if (!$this->hasSession($scheme, $host, $customerGroup)) {
+            return $this->createSession($scheme, $host, $customerGroup);
         }
 
-        $session = Session::load($this->getSessionFilename($host, $customerGroup));
+        $session = Session::load($this->getSessionFilename($scheme, $host, $customerGroup));
 
         $this->logger->debugEvent('LOADED', $session->getBasicDataArray());
 
         if (!$session->isValid()) {
-            return $this->createSession($host, $customerGroup);
+            return $this->createSession($scheme, $host, $customerGroup);
         }
 
         return $session;
