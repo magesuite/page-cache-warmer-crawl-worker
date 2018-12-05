@@ -95,6 +95,7 @@ class Session
         // Lock file exclusively to ensure nothing can read or write
         flock($f, LOCK_EX);
         fwrite($f, $content);
+        fflush($f);
         flock($f, LOCK_UN);
         fclose($f);
     }
@@ -321,10 +322,5 @@ class Session
             'is_initialized' => $this->isInitialized(),
             'is_valid' => $this->isValid()
         ];
-    }
-
-    public function __destruct()
-    {
-        $this->save();
     }
 }

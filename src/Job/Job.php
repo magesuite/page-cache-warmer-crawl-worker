@@ -229,6 +229,11 @@ class Job
         $this->status = self::STATUS_COMPLETED;
         $this->statusCode = $statusCode;
         $this->wasAlreadyWarm = $wasAlreadyWarm;
+
+        if ($this->session && $this->session->isValid()) {
+            /* Save session upon succesfull completion as it was most probably extended */
+            $this->session->save();
+        }
     }
 
     /**
