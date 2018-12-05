@@ -63,7 +63,7 @@ class Job
     protected $status = self::STATUS_PENDING;
 
     /**
-     * @var int
+     * @var int|null
      */
     protected $statusCode;
 
@@ -237,9 +237,9 @@ class Job
     }
 
     /**
-     * @return int
+     * @return int|null
      */
-    public function getStatusCode(): int
+    public function getStatusCode(): ?int
     {
         return $this->statusCode;
     }
