@@ -24,34 +24,29 @@ class EventFormattingLogger extends AbstractLogger implements LoggerInterface
         $this->upstreamLogger = $upstreamLogger;
     }
 
-    private function formatDataKey(string $key): string
+    protected function formatDataItem($val)
     {
-        return ucfirst(
-            preg_replace_callback(
-                '/([a-z0-9])[_\- ]([a-z0-9])/',
-                function($m) { return $m[1] . '-' . ucfirst($m[2]); },
-                trim($key)
-            )
-        );
+        if ($val instanceof \DateTime) {
+            return $val->format('d.m.Y H:i:s');
+        }
+
+        if (is_array($val)) {
+            $newArr = [];
+
+            foreach ($val as $childKey => $childVal) {
+                $newArr[$childKey] = $this->formatDataItem($childVal);
+            }
+
+            return $newArr;
+        }
+
+        return $val;
     }
 
     protected function formatData(array $data): string
     {
-        return implode(', ', array_map(function ($key, $val) {
-            if (is_string($val)) {
-                $val = "'$val'";
-            } elseif(is_null($val)) {
-                $val = "null";
-            } elseif(is_bool($val)) {
-                $val = $val ? 'yes' : 'no';
-            } elseif(is_float($val)) {
-                $val = sprintf('%.2f', $val);
-            } elseif($val instanceof \DateTime) {
-                $val = $val->format('d.m.Y H:i:s');
-            }
-
-            return $this->formatDataKey($key) . ': ' . $val;
-        }, array_keys($data), array_values($data)));
+        return json_encode($this->formatDataItem($data),
+            JSON_PRETTY_PRINT + JSON_UNESCAPED_SLASHES + JSON_UNESCAPED_UNICODE);
     }
 
     public function logEvent(string $level, string $name, array $data = [], string $note = '')
@@ -69,7 +64,7 @@ class EventFormattingLogger extends AbstractLogger implements LoggerInterface
         }
 
         if (!empty($data)) {
-            $msg .= $this->formatData($data);
+            $msg .= "\n" . $this->formatData($data);
         }
 
         $this->log($level, $msg);

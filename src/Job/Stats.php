@@ -233,10 +233,90 @@ class Stats
         return $this->totalTransferTime / $this->totalTransferCount;
     }
 
+    /**
+     * @return int
+     */
+    public function getTotal(): int
+    {
+        return $this->total;
+    }
+
+    /**
+     * @return int
+     */
+    public function getCompleted(): int
+    {
+        return $this->completed;
+    }
+
+    /**
+     * @return int
+     */
+    public function getPending(): int
+    {
+        return $this->pending;
+    }
+
+    /**
+     * @return int
+     */
+    public function getFailed(): int
+    {
+        return $this->failed;
+    }
+
+    /**
+     * @return int
+     */
+    public function getAlreadyWarm(): int
+    {
+        return $this->alreadyWarm;
+    }
+
+    /**
+     * @return array
+     */
+    public function getFailReasons(): array
+    {
+        return $this->failReasons;
+    }
+
+    /**
+     * @return array
+     */
+    public function getStatusCodes(): array
+    {
+        return $this->statusCodes;
+    }
+
+    /**
+     * @return float
+     */
+    public function getCacheMissTransferTime(): float
+    {
+        return $this->cacheMissTransferTime;
+    }
+
+    /**
+     * @return int
+     */
+    public function getTotalTransferCount(): int
+    {
+        return $this->totalTransferCount;
+    }
+
+    /**
+     * @return float
+     */
+    public function getTotalTransferTime(): float
+    {
+        return $this->totalTransferTime;
+    }
+
     public function getSummaryArray(): array
     {
         return [
-            'totle' => $this->total,
+            'total' => $this->total,
             'pending' => $this->pending,
             'completed' => $this->completed,
             'failed' => $this->failed,

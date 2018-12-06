@@ -107,7 +107,7 @@ class TransferTimeThrottler extends AbstractThrottler implements Throttler
             $this->concurrency = $this->getSetting('target_concurrency');
             $this->requestDelay = 0;
 
-            $this->logger->warningEvent('NO-THROTTLING', [
+            $this->logger->debugEvent('NO-THROTTLING', [
                 'slowdown' => $this->formatRelativeSlowdown($relativeSlowdown)
             ]);
         }

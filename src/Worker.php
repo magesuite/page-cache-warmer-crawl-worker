@@ -202,7 +202,7 @@ class Worker
                 break;
             }
 
-            $this->logger->infoEvent('WAITING-FOR-JOBS', [
+            $this->logger->debugEvent('WAITING-FOR-JOBS', [
                 'delay_for' => $minRuntimeDelay,
                 'runtime' => intval($totalStats->getDuration()),
                 'runtime_min' => $minRuntime,
@@ -215,10 +215,14 @@ class Worker
 
         $totalStats->stopTimer();
 
-        $this->logger->infoEvent('WORK-FINISHED', array_merge([
-            'batch_count' => $batchNr,
-            'runtime' => $totalStats->getDuration(),
-            'memory_usage_peak' => memory_get_peak_usage(true) / 0x100000,
-        ], $totalStats->getSummaryArray()));
+        if ($totalStats->getTotal() === 0) {
+            $this->logger->debugEvent('NO-WORK-TO-DO');
+        } else {
+            $this->logger->infoEvent('WORK-FINISHED', array_merge([
+                'batch_count' => $batchNr,
+                'runtime' => $totalStats->getDuration(),
+                'memory_usage_peak' => memory_get_peak_usage(true) / 0x100000,
+            ], $totalStats->getSummaryArray()));
+        }
     }
 }
