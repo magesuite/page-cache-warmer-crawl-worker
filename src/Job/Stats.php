@@ -144,10 +144,9 @@ class Stats
     {
         $this->total++;
 
-
-
         if ($job->isCompleted()) {
             $this->completed++;
+            $this->totalTransferCount++;
 
             if ($job->wasAlreadyWarm()) {
                 $this->alreadyWarm++;
