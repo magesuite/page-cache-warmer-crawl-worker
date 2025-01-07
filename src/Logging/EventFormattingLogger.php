@@ -105,7 +105,7 @@ class EventFormattingLogger extends AbstractLogger implements LoggerInterface
         $this->logEvent(LogLevel::DEBUG, $name, $data, $note);
     }
 
-    public function log($level, $message, array $context = [])
+    public function log($level, $message, array $context = []): void
     {
         $this->upstreamLogger->log($level, $message, $context);
     }
